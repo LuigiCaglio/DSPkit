@@ -1,6 +1,12 @@
 # Installation
 
 ```bash
+pip install git+https://github.com/LuigiCaglio/DSPkit.git
+```
+
+For development (editable install):
+
+```bash
 git clone https://github.com/LuigiCaglio/DSPkit.git
 cd DSPkit
 pip install -e .
