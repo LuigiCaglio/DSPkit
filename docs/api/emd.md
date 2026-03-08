@@ -30,6 +30,10 @@ freq_bins, marginal = dsp.hht_marginal_spectrum(envs, inst_freqs, fs, n_bins=512
 
 Reconstruction is exact: `imfs.sum(axis=0) + residue == x` (within floating-point tolerance).
 
+![EMD intrinsic mode functions](../images/emd_imfs.png)
+
+![HHT time-frequency analysis](../images/emd_hht.png)
+
 ---
 
 ::: dspkit.emd.emd

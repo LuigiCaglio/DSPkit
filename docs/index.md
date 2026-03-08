@@ -29,6 +29,11 @@ DSPkit provides a clean, function-based API for the signal-processing tasks that
 
 ---
 
+## Gallery
+
+![Spectral analysis](images/spectral.png)
+![Time-frequency analysis](images/timefreq.png)
+
 ## Quick example
 
 ```python

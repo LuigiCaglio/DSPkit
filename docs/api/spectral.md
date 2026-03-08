@@ -4,6 +4,8 @@ Spectral analysis functions: FFT amplitude spectrum, power spectral density, cro
 
 All estimators use `scipy.signal` under the hood with engineering-friendly defaults (Hann window, density scaling, mean detrending).
 
+![Spectral analysis example](../images/spectral.png)
+
 ---
 
 ::: dspkit.spectral.fft_spectrum
