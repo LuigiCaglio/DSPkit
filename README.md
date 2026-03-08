@@ -2,7 +2,7 @@
 
 **[Documentation](https://LuigiCaglio.github.io/DSPkit)**
 
-A lightweight Digital Signal Processing (DSP) toolkit for time series data.
+A lightweight Digital Signal Processing (DSP) toolkit for time series data. Mostly for plotting and visual analysis.
 Based on NumPy + SciPy + Matplotlib.
 
 ---

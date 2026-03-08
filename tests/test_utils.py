@@ -140,7 +140,9 @@ class TestDifferentiate:
         expected = 2 * np.pi * f * np.cos(2 * np.pi * f * t)
         # Compare interior only (avoid edge effects)
         sl = slice(10, -10)
-        np.testing.assert_allclose(dxdt[sl], expected[sl], atol=1e-3)
+        # np.gradient uses O(h²) central differences; with h=1/fs and
+        # f=5 Hz the truncation error is ~(h·2πf)²/6·amplitude ≈ 0.005.
+        np.testing.assert_allclose(dxdt[sl], expected[sl], atol=0.01)
 
     def test_output_length_unchanged(self):
         x = np.random.default_rng(4).normal(size=N)
