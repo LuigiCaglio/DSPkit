@@ -11,6 +11,8 @@ For a narrow-band or IMF signal `x(t)`, the analytic signal `z(t) = x(t) + j·H{
 !!! tip "Use `hilbert_attributes` for efficiency"
     `hilbert_attributes` computes all three in a single Hilbert call. Use the individual functions only when you need one attribute.
 
+![Instantaneous attributes example](../images/instantaneous.png)
+
 ---
 
 ::: dspkit.instantaneous.hilbert_attributes

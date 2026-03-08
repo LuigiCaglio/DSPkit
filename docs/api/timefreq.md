@@ -12,6 +12,8 @@ Joint time-frequency representations for non-stationary signals.
 !!! warning "WVD/SPWVD computation time"
     Both Wigner-Ville functions are O(N²). For signals longer than ~2048 samples a `UserWarning` is raised. Use `warn_above` to adjust the threshold.
 
+![Time-frequency analysis example](../images/timefreq.png)
+
 ---
 
 ## STFT
