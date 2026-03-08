@@ -39,10 +39,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/DSPkit"
-Documentation = "https://your-username.github.io/DSPkit"
-Repository = "https://github.com/your-username/DSPkit"
-Issues = "https://github.com/your-username/DSPkit/issues"
+Homepage = "https://github.com/LuigiCaglio/DSPkit"
+Documentation = "https://LuigiCaglio.github.io/DSPkit"
+Repository = "https://github.com/LuigiCaglio/DSPkit"
+Issues = "https://github.com/LuigiCaglio/DSPkit/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

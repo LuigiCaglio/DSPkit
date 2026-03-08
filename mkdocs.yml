@@ -1,8 +1,8 @@
 site_name: DSPkit
 site_description: DSP toolkit for structural health monitoring
 site_author: Luigi
-repo_url: https://github.com/your-username/DSPkit
-repo_name: your-username/DSPkit
+repo_url: https://github.com/LuigiCaglio/DSPkit
+repo_name: LuigiCaglio/DSPkit
 docs_dir: docs
 site_dir: site
 

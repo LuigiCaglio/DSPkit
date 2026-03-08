@@ -28,7 +28,7 @@ pip install dspkit
 Or install from source:
 
 ```bash
-git clone https://github.com/your-username/DSPkit.git
+git clone https://github.com/LuigiCaglio/DSPkit.git
 cd DSPkit
 pip install -e .
 ```
@@ -89,7 +89,7 @@ python examples/example_spectral.py
 ## Documentation
 
 Full API reference and narrative guides:
-**[https://your-username.github.io/DSPkit](https://your-username.github.io/DSPkit)**
+**[https://LuigiCaglio.github.io/DSPkit](https://LuigiCaglio.github.io/DSPkit)**
 
 To build docs locally:
 
