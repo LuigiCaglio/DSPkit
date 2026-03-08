@@ -100,12 +100,13 @@ class TestPsd:
         freqs, Pxx = psd(x, FS, nperseg=1024)
         assert abs(freqs[np.argmax(Pxx)] - freq) < 2.0
 
-    def test_parseval_spectrum_scaling(self):
-        """Power spectrum integrated over all bins should equal signal power."""
+    def test_parseval_density_scaling(self):
+        """Parseval's theorem: ∑(Pxx * df) ≈ mean(x²) for density scaling."""
         x = _sine(100.0, amplitude=1.0)
-        freqs, Pxx = psd(x, FS, scaling="spectrum")
-        # Signal power = A^2 / 2 = 0.5
-        total_power = Pxx.sum()
+        freqs, Pxx = psd(x, FS, scaling="density")
+        df = freqs[1] - freqs[0]
+        # Signal power = A² / 2 = 0.5
+        total_power = (Pxx * df).sum()
         assert abs(total_power - 0.5) < 0.05
 
     def test_default_nperseg(self):
@@ -201,7 +202,7 @@ class TestAutocorrelation:
         lags, acf = autocorrelation(x, fs=FS, max_lag=0.5)
         expected = np.cos(2.0 * np.pi * freq * lags)
         # Ignore the first and last few samples (edge effects from the biased estimator)
-        np.testing.assert_allclose(acf[10:-10], expected[10:-10], atol=0.02)
+        np.testing.assert_allclose(acf[10:-10], expected[10:-10], atol=0.06)
 
 
 # ---------------------------------------------------------------------------

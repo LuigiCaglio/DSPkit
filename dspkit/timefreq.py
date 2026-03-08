@@ -192,7 +192,9 @@ def wigner_ville(
     Returns
     -------
     freqs : ndarray, shape (N // 2 + 1,)
-        Frequency vector [Hz], from 0 to fs / 2.
+        Frequency vector [Hz], from 0 to fs / 4.
+        The half-lag autocorrelation limits the representable frequency
+        range to fs/4 (Nyquist of the half-lag domain).
     times : ndarray, shape (N,)
         Time vector [s].
     WVD : ndarray, shape (N, N // 2 + 1)
@@ -212,10 +214,17 @@ def wigner_ville(
     z = _signal.hilbert(x)  # analytic signal
 
     # Build instantaneous autocorrelation R[n, m] = z[n+m] * conj(z[n-m])
-    # with circular indexing:
-    #   column 0           → lag m=0
-    #   columns 1..N//2    → positive lags
-    #   columns N//2+1..N-1 → negative lags (= conjugate of positive)
+    # stored as an N×N complex matrix using circular (Hermitian) indexing:
+    #   column 0            → half-lag m=0
+    #   columns 1..N//2     → positive half-lags
+    #   columns N//2+1..N-1 → negative half-lags (conjugate of positive)
+    #
+    # Because R[n,m] = A²·exp(j·4π·f₀·m/fs) for a pure tone at f₀,
+    # the N-point DFT peaks at bin k = 2·N·f₀/fs.  The correct frequency
+    # mapping is therefore  f_k = k·fs/(2N), i.e. rfftfreq(N, d=2/fs).
+    # This covers 0 to fs/4 (the Nyquist limit of the half-lag domain).
+    # Dividing by fs normalises the power marginal:
+    #   ∑_k W[n, k] · Δf  ≈  A²/2   (RMS power of a real sine of amplitude A).
     R = np.zeros((N, N), dtype=complex)
     R[:, 0] = np.abs(z) ** 2  # m=0
 
@@ -227,9 +236,8 @@ def wigner_ville(
         R[ns, m] = vals
         R[ns, N - m] = np.conj(vals)  # Hermitian symmetry → real output
 
-    # DFT along lag axis; factor 2 because we use analytic signal (one-sided)
-    WVD_full = 2.0 * np.real(np.fft.fft(R, axis=1))
-    freqs = np.fft.rfftfreq(N, d=1.0 / fs)
+    WVD_full = 2.0 * np.real(np.fft.fft(R, axis=1)) / fs
+    freqs = np.fft.rfftfreq(N, d=2.0 / fs)   # 0 … fs/4, length N//2+1
     times = np.arange(N) / fs
     return freqs, times, WVD_full[:, : len(freqs)]
 
@@ -281,7 +289,7 @@ def smoothed_pseudo_wv(
     Returns
     -------
     freqs : ndarray, shape (N // 2 + 1,)
-        Frequency vector [Hz].
+        Frequency vector [Hz], from 0 to fs / 4.
     times : ndarray, shape (N,)
         Time vector [s].
     SPWVD : ndarray, shape (N, N // 2 + 1)
@@ -323,14 +331,13 @@ def smoothed_pseudo_wv(
         R[ns, N - m] = np.conj(vals)
 
     # Time smoothing via Hann window convolved along axis 0 (time).
-    # scipy.ndimage.convolve1d processes the full matrix in optimised C code.
     h = _signal.windows.hann(2 * time_samples + 1)
     h = h / h.sum()
     R_real = _ndimage.convolve1d(R.real, h, axis=0, mode="constant", cval=0.0)
     R_imag = _ndimage.convolve1d(R.imag, h, axis=0, mode="constant", cval=0.0)
     R = R_real + 1j * R_imag
 
-    SPWVD_full = 2.0 * np.real(np.fft.fft(R, axis=1))
-    freqs = np.fft.rfftfreq(N, d=1.0 / fs)
+    SPWVD_full = 2.0 * np.real(np.fft.fft(R, axis=1)) / fs
+    freqs = np.fft.rfftfreq(N, d=2.0 / fs)   # 0 … fs/4, length N//2+1
     times = np.arange(N) / fs
     return freqs, times, SPWVD_full[:, : len(freqs)]

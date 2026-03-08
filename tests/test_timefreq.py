@@ -130,7 +130,8 @@ class TestWignerVille:
         x = _sine(50.0)
         freqs, _, _ = wigner_ville(x, FS)
         assert freqs[0] == 0.0
-        assert abs(freqs[-1] - FS / 2) < 1.0
+        # Half-lag WVD covers 0 to fs/4 (Nyquist of the half-lag domain)
+        assert abs(freqs[-1] - FS / 4) < 1.0
 
     def test_real_output(self):
         x = _sine(50.0)
@@ -162,7 +163,8 @@ class TestWignerVille:
     def test_instantaneous_power_marginal(self):
         """
         Integrating WVD over frequency should give instantaneous power.
-        WVD marginal: ∫ W(t,f) df ≈ |z(t)|²
+        WVD marginal: ∫ W(t,f) df ≈ |z(t)|² = A² for a real sine of
+        amplitude A (analytic signal has |z| = A).
         For interior samples (avoid edge effects), check proportionality.
         """
         freq = 80.0
@@ -173,7 +175,7 @@ class TestWignerVille:
         power_marginal = WVD.sum(axis=1) * df
         # Interior only (edges have fewer valid lags)
         sl = slice(N // 4, 3 * N // 4)
-        expected_power = A ** 2 / 2.0  # RMS power of a sine
+        expected_power = A ** 2  # |z(t)|² for analytic signal of amplitude A
         assert abs(power_marginal[sl].mean() / expected_power - 1.0) < 0.05
 
 

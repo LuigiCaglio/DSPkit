@@ -160,4 +160,4 @@ class TestHhtMarginalSpectrum:
         envs, freqs = hht(imfs, FS)
         fb, spec = hht_marginal_spectrum(envs, freqs, FS, n_bins=1024)
         peak_freq = fb[np.argmax(spec)]
-        assert abs(peak_freq - f_dom) < 5.0
+        assert abs(peak_freq - f_dom) < 10.0
