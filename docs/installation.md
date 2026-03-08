@@ -1,15 +1,7 @@
 # Installation
 
-## From PyPI
-
 ```bash
-pip install dspkit
-```
-
-## From source
-
-```bash
-git clone https://github.com/your-username/DSPkit.git
+git clone https://github.com/LuigiCaglio/DSPkit.git
 cd DSPkit
 pip install -e .
 ```

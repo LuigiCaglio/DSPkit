@@ -24,12 +24,6 @@ Based on NumPy + SciPy + Matplotlib.
 ## Installation
 
 ```bash
-pip install dspkit
-```
-
-Or install from source:
-
-```bash
 git clone https://github.com/LuigiCaglio/DSPkit.git
 cd DSPkit
 pip install -e .
