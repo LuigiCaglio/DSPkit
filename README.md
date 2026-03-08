@@ -2,8 +2,8 @@
 
 **[Documentation](https://LuigiCaglio.github.io/DSPkit)**
 
-A lightweight DSP toolkit for **structural health monitoring (SHM)**.
-Pure NumPy + SciPy + Matplotlib — no heavy ML or wavelet dependencies.
+A lightweight Digital Signal Processing (DSP) toolkit for time series data.
+Based on NumPy + SciPy + Matplotlib.
 
 ---
 
