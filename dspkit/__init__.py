@@ -2,6 +2,8 @@
 DSPkit — DSP toolkit for structural health monitoring.
 """
 
+__version__ = "0.1.0"
+
 from dspkit.spectral import (
     fft_spectrum,
     psd,
