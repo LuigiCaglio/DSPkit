@@ -1,6 +1,6 @@
 # Examples
 
-The [`examples/`](https://github.com/your-username/DSPkit/tree/main/examples) folder contains five self-contained scripts. Each one generates a multi-panel matplotlib figure you can run directly:
+The [`examples/`](https://github.com/LuigiCaglio/DSPkit/tree/main/examples) folder contains eight self-contained scripts. Each one generates a multi-panel matplotlib figure you can run directly:
 
 ```bash
 python examples/example_spectral.py
@@ -8,6 +8,9 @@ python examples/example_filters_utils.py
 python examples/example_timefreq.py
 python examples/example_instantaneous.py
 python examples/example_emd.py
+python examples/example_peaks_indicators.py
+python examples/example_fdd.py
+python examples/example_multisensor_stats.py
 ```
 
 ---
@@ -76,3 +79,52 @@ Three rows, three columns (waveform + envelope, instantaneous frequency, instant
     - Time-frequency scatter coloured by instantaneous energy
     - Marginal spectrum vs Welch PSD
     - Log-envelope fit → damping ratio per modal IMF
+
+---
+
+## example_peaks_indicators.py
+
+**Peak detection and SHM indicators on a 2DOF system.**
+
+- **Figure 1 — Peak Detection:**
+    - FFT peak detection with prominence filtering
+    - PSD peak detection in dB
+    - Peak bandwidth and Q-factor estimation
+    - Harmonic series identification (f0 = 25 Hz)
+
+- **Figure 2 — SHM Indicators:**
+    - Scalar indicators: spectral entropy, kurtosis, skewness
+    - RMS variation over time (10 s segments)
+    - Energy variation over time
+    - Dominant frequency tracking
+    - Spectral entropy evolution
+
+---
+
+## example_fdd.py
+
+**Frequency Domain Decomposition (FDD) on a 2DOF system.**
+
+Full OMA workflow:
+
+- Singular values of the PSD matrix (peak picking)
+- Natural frequency identification
+- Mode shape extraction and visualisation
+- Enhanced FDD (EFDD) damping estimation
+
+---
+
+## example_multisensor_stats.py
+
+**Multi-sensor analysis and probability statistics.**
+
+- **Figure 1 — Multi-Sensor:**
+    - Correlation matrix heatmap
+    - Coherence between channels vs frequency
+    - PSD matrix singular values (FDD-style)
+    - Covariance matrix
+
+- **Figure 2 — Probability Statistics:**
+    - PDF estimation (KDE + histogram) for each channel
+    - Joint distribution (2D histogram)
+    - Mahalanobis distance for outlier detection

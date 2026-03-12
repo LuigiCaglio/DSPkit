@@ -46,6 +46,37 @@ from dspkit.emd import (
     hht,
     hht_marginal_spectrum,
 )
+from dspkit.peaks import (
+    find_peaks,
+    peak_bandwidth,
+    find_harmonics,
+)
+from dspkit.indicators import (
+    spectral_entropy,
+    kurtosis,
+    skewness,
+    rms_variation,
+    frequency_shift,
+    energy_variation,
+)
+from dspkit.multisensor import (
+    correlation_matrix,
+    coherence_matrix,
+    psd_matrix,
+)
+from dspkit.fdd import (
+    fdd_svd,
+    fdd_peak_picking,
+    fdd_mode_shapes,
+    efdd_damping,
+)
+from dspkit.statistics import (
+    pdf_estimate,
+    histogram,
+    joint_histogram,
+    covariance_matrix,
+    mahalanobis,
+)
 from dspkit.plots import (
     plot_signal,
     plot_fft,
@@ -57,6 +88,13 @@ from dspkit.plots import (
     plot_spectrogram,
     plot_scalogram,
     plot_wvd,
+    plot_peaks,
+    plot_singular_values,
+    plot_mode_shape,
+    plot_pdf,
+    plot_joint_histogram,
+    plot_correlation_matrix,
+    plot_indicators,
 )
 
 __all__ = [
@@ -96,6 +134,32 @@ __all__ = [
     "emd",
     "hht",
     "hht_marginal_spectrum",
+    # peaks
+    "find_peaks",
+    "peak_bandwidth",
+    "find_harmonics",
+    # indicators
+    "spectral_entropy",
+    "kurtosis",
+    "skewness",
+    "rms_variation",
+    "frequency_shift",
+    "energy_variation",
+    # multisensor
+    "correlation_matrix",
+    "coherence_matrix",
+    "psd_matrix",
+    # fdd
+    "fdd_svd",
+    "fdd_peak_picking",
+    "fdd_mode_shapes",
+    "efdd_damping",
+    # statistics
+    "pdf_estimate",
+    "histogram",
+    "joint_histogram",
+    "covariance_matrix",
+    "mahalanobis",
     # plots
     "plot_signal",
     "plot_fft",
@@ -107,4 +171,11 @@ __all__ = [
     "plot_spectrogram",
     "plot_scalogram",
     "plot_wvd",
+    "plot_peaks",
+    "plot_singular_values",
+    "plot_mode_shape",
+    "plot_pdf",
+    "plot_joint_histogram",
+    "plot_correlation_matrix",
+    "plot_indicators",
 ]

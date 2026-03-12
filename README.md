@@ -17,6 +17,11 @@ Based on NumPy + SciPy + Matplotlib.
 | `timefreq` | STFT spectrogram, CWT scalogram (Morlet), Wigner-Ville, Smoothed Pseudo WVD |
 | `instantaneous` | Hilbert envelope, instantaneous phase & frequency |
 | `emd` | Empirical Mode Decomposition, Hilbert-Huang Transform, marginal spectrum |
+| `peaks` | Peak detection, bandwidth / Q-factor estimation, harmonic identification |
+| `indicators` | Spectral entropy, kurtosis, skewness, RMS / energy / frequency tracking |
+| `multisensor` | Correlation matrix, coherence matrix, PSD matrix |
+| `fdd` | Frequency Domain Decomposition (FDD/EFDD) — natural frequencies, mode shapes, damping |
+| `statistics` | PDF estimation (KDE), histograms, joint distributions, covariance, Mahalanobis distance |
 | `plots` | Thin matplotlib wrappers for every analysis output |
 
 ---
@@ -48,6 +53,17 @@ t, a1, a2 = generate_2dof(duration=60.0, fs=fs, noise_std=1.0,
 freqs, Pxx = dsp.psd(a1, fs, nperseg=4096)
 dsp.plot_psd(freqs, Pxx, title="Welch PSD — mass 1")
 
+# Peak detection
+peak_freqs, peak_vals, proms = dsp.find_peaks(freqs, Pxx, distance_hz=5.0)
+dsp.plot_peaks(freqs, Pxx, peak_freqs, peak_vals, db=True)
+
+# FDD — Operational Modal Analysis
+data = np.vstack([a1, a2])
+freqs, S, U = dsp.fdd_svd(data, fs, nperseg=4096)
+peak_freqs, peak_idx = dsp.fdd_peak_picking(freqs, S, distance_hz=5.0, max_peaks=2)
+modes = dsp.fdd_mode_shapes(U, peak_idx)
+dsp.plot_singular_values(freqs, S, peak_freqs=peak_freqs)
+
 # Bandpass filter around first mode
 fn1, fn2 = natural_frequencies_2dof()
 a1_bp = dsp.bandpass(a1, fs, low=fn1 - 3, high=fn1 + 3)
@@ -58,6 +74,10 @@ env, phase, fi = dsp.hilbert_attributes(a1_bp, fs)
 # EMD
 imfs, residue = dsp.emd(a1)
 envs, inst_freqs = dsp.hht(imfs, fs)
+
+# PDF estimation
+xi, density = dsp.pdf_estimate(a1)
+dsp.plot_pdf(xi, density, hist_data=a1)
 ```
 
 ---
@@ -73,6 +93,9 @@ Runnable scripts with plots are in the [`examples/`](examples/) folder:
 | `example_timefreq.py` | STFT, CWT, Wigner-Ville, Smoothed Pseudo WVD |
 | `example_instantaneous.py` | Hilbert envelope, instantaneous frequency & phase |
 | `example_emd.py` | EMD, HHT time-frequency scatter, marginal spectrum, damping |
+| `example_peaks_indicators.py` | Peak detection, bandwidth, harmonics, SHM indicators |
+| `example_fdd.py` | FDD/EFDD: singular values, mode shapes, damping estimation |
+| `example_multisensor_stats.py` | Correlation/coherence matrices, PDF, joint distributions, Mahalanobis |
 
 ```bash
 python examples/example_spectral.py

@@ -102,6 +102,87 @@ envs, inst_freqs = dsp.hht(imfs, fs)
 freq_bins, marginal = dsp.hht_marginal_spectrum(envs, inst_freqs, fs, n_bins=512)
 ```
 
+## Peak detection
+
+```python
+# Detect peaks in a PSD
+peak_freqs, peak_vals, prominences = dsp.find_peaks(
+    freqs, Pxx, distance_hz=5.0, max_peaks=5,
+)
+dsp.plot_peaks(freqs, Pxx, peak_freqs, peak_vals, db=True, xlim=(0, 80))
+
+# Bandwidth and Q-factor
+pf, bw, Q = dsp.peak_bandwidth(freqs, Pxx, peak_freqs=peak_freqs)
+
+# Harmonic detection
+hf, hv, orders = dsp.find_harmonics(freqs, amp, fundamental=25.0, n_harmonics=5)
+```
+
+## SHM indicators
+
+```python
+# Scalar indicators
+se = dsp.spectral_entropy(freqs, Pxx)  # 0 = tonal, 1 = white noise
+k = dsp.kurtosis(a1)                   # excess kurtosis (0 for Gaussian)
+s = dsp.skewness(a1)                   # 0 for symmetric
+
+# Time-varying indicators
+times, rms_vals = dsp.rms_variation(a1, fs, segment_duration=10.0)
+times, dom_freqs = dsp.frequency_shift(a1, fs, segment_duration=10.0)
+times, energies = dsp.energy_variation(a1, fs, segment_duration=10.0)
+
+dsp.plot_indicators(times, rms_vals, title="RMS Variation", ylabel="RMS")
+```
+
+## Multi-sensor analysis
+
+```python
+data = np.vstack([a1, a2])  # shape (n_channels, N)
+
+# Correlation and coherence matrices
+R = dsp.correlation_matrix(data)
+freqs, C = dsp.coherence_matrix(data, fs, nperseg=4096)
+
+# PSD matrix (input to FDD)
+freqs, G = dsp.psd_matrix(data, fs, nperseg=4096)
+
+dsp.plot_correlation_matrix(R, labels=["Ch1", "Ch2"])
+```
+
+## FDD — Frequency Domain Decomposition
+
+```python
+# Full OMA workflow
+freqs, S, U = dsp.fdd_svd(data, fs, nperseg=4096)
+dsp.plot_singular_values(freqs, S, db=True, xlim=(0, 80))
+
+# Pick peaks → natural frequencies
+peak_freqs, peak_idx = dsp.fdd_peak_picking(freqs, S, distance_hz=5.0, max_peaks=2)
+
+# Extract mode shapes
+modes = dsp.fdd_mode_shapes(U, peak_idx)
+dsp.plot_mode_shape(modes[0], sensor_labels=["Mass 1", "Mass 2"])
+
+# EFDD damping estimation
+zeta, fn = dsp.efdd_damping(freqs, S, U, peak_idx, fs)
+```
+
+## Probability and joint statistics
+
+```python
+# PDF estimation
+xi, density = dsp.pdf_estimate(a1)
+dsp.plot_pdf(xi, density, hist_data=a1)
+
+# Joint distribution
+xc, yc, H = dsp.joint_histogram(a1, a2, bins=60)
+dsp.plot_joint_histogram(xc, yc, H, xlabel="Ch1", ylabel="Ch2")
+
+# Covariance and Mahalanobis distance
+cov = dsp.covariance_matrix(data)
+distances = dsp.mahalanobis(data)
+```
+
 ## Embedding plots in your own figures
 
 Every `plot_*` function accepts an `ax` parameter:

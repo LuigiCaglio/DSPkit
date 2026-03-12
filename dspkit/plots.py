@@ -427,6 +427,274 @@ def plot_scalogram(
     return ax
 
 
+def plot_peaks(
+    freqs: np.ndarray,
+    spectrum: np.ndarray,
+    peak_freqs: np.ndarray,
+    peak_values: np.ndarray,
+    *,
+    ax: Axes | None = None,
+    db: bool = False,
+    xlim: tuple[float, float] | None = None,
+    title: str = "Spectrum with Detected Peaks",
+    ylabel: str | None = None,
+    **kwargs,
+) -> Axes:
+    """
+    Plot a spectrum with detected peaks marked.
+
+    Parameters
+    ----------
+    freqs, spectrum : array_like
+        Frequency vector and spectrum values.
+    peak_freqs, peak_values : array_like
+        Detected peak positions (from ``find_peaks``).
+    db : bool
+        Display in dB.
+    """
+    ax = _ensure_ax(ax)
+    kwargs.setdefault("lw", 0.9)
+    if db:
+        y = 10.0 * np.log10(np.maximum(spectrum, spectrum.max() * 1e-10))
+        y_peaks = 10.0 * np.log10(np.maximum(peak_values, spectrum.max() * 1e-10))
+        ax.plot(freqs, y, **kwargs)
+        ax.plot(peak_freqs, y_peaks, "rv", ms=8, label="peaks")
+        ax.set_ylabel(ylabel or "Power [dB]")
+    else:
+        ax.semilogy(freqs, np.maximum(spectrum, spectrum.max() * 1e-12), **kwargs)
+        ax.plot(peak_freqs, peak_values, "rv", ms=8, label="peaks")
+        ax.set_ylabel(ylabel or "Amplitude")
+    ax.set(xlabel="Frequency [Hz]", title=title)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    ax.legend(fontsize=8)
+    ax.grid(True, which="both", alpha=0.3)
+    return ax
+
+
+def plot_singular_values(
+    freqs: np.ndarray,
+    S: np.ndarray,
+    *,
+    ax: Axes | None = None,
+    n_sv: int | None = None,
+    db: bool = True,
+    peak_freqs: np.ndarray | None = None,
+    xlim: tuple[float, float] | None = None,
+    title: str = "FDD — Singular Values",
+    **kwargs,
+) -> Axes:
+    """
+    Plot FDD singular value curves.
+
+    Parameters
+    ----------
+    freqs : array_like, shape (M,)
+    S : array_like, shape (M, n_channels)
+        Singular values from ``fdd_svd``.
+    n_sv : int or None
+        Number of singular values to plot. Default: all.
+    db : bool
+        Display in dB (default ``True``).
+    peak_freqs : array_like or None
+        If provided, mark natural frequency peaks on the first SV curve.
+    """
+    ax = _ensure_ax(ax)
+    kwargs.setdefault("lw", 0.9)
+    n_ch = S.shape[1]
+    n_sv = n_sv or n_ch
+
+    for i in range(min(n_sv, n_ch)):
+        sv = S[:, i]
+        label = f"SV{i + 1}"
+        if db:
+            y = 10.0 * np.log10(np.maximum(sv, sv.max() * 1e-15))
+            ax.plot(freqs, y, label=label, **kwargs)
+        else:
+            ax.semilogy(freqs, np.maximum(sv, sv.max() * 1e-15), label=label, **kwargs)
+
+    if peak_freqs is not None and len(peak_freqs) > 0:
+        sv1 = S[:, 0]
+        if db:
+            sv1_db = 10.0 * np.log10(np.maximum(sv1, sv1.max() * 1e-15))
+            peak_idx = [np.argmin(np.abs(freqs - f)) for f in peak_freqs]
+            ax.plot(peak_freqs, sv1_db[peak_idx], "rv", ms=8, label="modes")
+        else:
+            peak_idx = [np.argmin(np.abs(freqs - f)) for f in peak_freqs]
+            ax.plot(peak_freqs, sv1[peak_idx], "rv", ms=8, label="modes")
+
+    ax.set(xlabel="Frequency [Hz]",
+           ylabel="Singular Value [dB]" if db else "Singular Value",
+           title=title)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    ax.legend(fontsize=8)
+    ax.grid(True, which="both", alpha=0.3)
+    return ax
+
+
+def plot_mode_shape(
+    mode: np.ndarray,
+    *,
+    ax: Axes | None = None,
+    sensor_labels: list[str] | None = None,
+    title: str = "Mode Shape",
+    **kwargs,
+) -> Axes:
+    """
+    Plot a single mode shape as a bar chart.
+
+    Parameters
+    ----------
+    mode : array_like, shape (n_channels,)
+        Mode shape vector (from ``fdd_mode_shapes``).
+        Real part is plotted.
+    sensor_labels : list of str or None
+        Labels for each sensor/channel.
+    """
+    ax = _ensure_ax(ax)
+    mode = np.asarray(mode)
+    n_ch = len(mode)
+    positions = np.arange(n_ch)
+    values = mode.real
+
+    colors = ["tab:blue" if v >= 0 else "tab:red" for v in values]
+    ax.bar(positions, values, color=colors, edgecolor="black", lw=0.6, **kwargs)
+    ax.axhline(0, color="black", lw=0.6)
+
+    if sensor_labels is not None:
+        ax.set_xticks(positions)
+        ax.set_xticklabels(sensor_labels, rotation=45, ha="right")
+    else:
+        ax.set_xticks(positions)
+        ax.set_xticklabels([f"Ch{i + 1}" for i in range(n_ch)])
+
+    ax.set(ylabel="Amplitude", title=title)
+    ax.grid(True, axis="y", alpha=0.3)
+    return ax
+
+
+def plot_pdf(
+    xi: np.ndarray,
+    density: np.ndarray,
+    *,
+    ax: Axes | None = None,
+    hist_data: np.ndarray | None = None,
+    hist_bins: int = 50,
+    title: str = "Probability Density Function",
+    xlabel: str = "Value",
+    **kwargs,
+) -> Axes:
+    """
+    Plot a PDF estimate, optionally with a histogram overlay.
+
+    Parameters
+    ----------
+    xi, density : array_like
+        KDE output from ``pdf_estimate``.
+    hist_data : array_like or None
+        Raw signal data to overlay as a normalised histogram.
+    hist_bins : int
+        Number of histogram bins.
+    """
+    ax = _ensure_ax(ax)
+    kwargs.setdefault("lw", 1.2)
+    if hist_data is not None:
+        ax.hist(hist_data, bins=hist_bins, density=True, alpha=0.3,
+                color="steelblue", label="histogram")
+    ax.plot(xi, density, color="tab:red", label="KDE", **kwargs)
+    ax.set(xlabel=xlabel, ylabel="Density", title=title)
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    return ax
+
+
+def plot_joint_histogram(
+    x_centres: np.ndarray,
+    y_centres: np.ndarray,
+    H: np.ndarray,
+    *,
+    ax: Axes | None = None,
+    cmap: str = "viridis",
+    title: str = "Joint Distribution",
+    xlabel: str = "X",
+    ylabel: str = "Y",
+    colorbar_label: str = "Density",
+) -> Axes:
+    """
+    Plot a 2D joint histogram as a heatmap.
+
+    Parameters
+    ----------
+    x_centres, y_centres, H : array_like
+        Output of ``joint_histogram``.
+    """
+    ax = _ensure_ax(ax, figsize=(7, 6))
+    im = ax.pcolormesh(x_centres, y_centres, H.T, shading="auto", cmap=cmap)
+    plt.colorbar(im, ax=ax, label=colorbar_label, pad=0.01)
+    ax.set(xlabel=xlabel, ylabel=ylabel, title=title)
+    return ax
+
+
+def plot_correlation_matrix(
+    R: np.ndarray,
+    *,
+    ax: Axes | None = None,
+    labels: list[str] | None = None,
+    cmap: str = "RdBu_r",
+    title: str = "Correlation Matrix",
+) -> Axes:
+    """
+    Plot a correlation matrix as a heatmap.
+
+    Parameters
+    ----------
+    R : array_like, shape (n, n)
+        Correlation matrix (from ``correlation_matrix``).
+    labels : list of str or None
+        Channel labels.
+    """
+    ax = _ensure_ax(ax, figsize=(7, 6))
+    n = R.shape[0]
+    im = ax.imshow(R, cmap=cmap, vmin=-1, vmax=1, aspect="equal")
+    plt.colorbar(im, ax=ax, label="Correlation", pad=0.01)
+    ticks = np.arange(n)
+    if labels is not None:
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(labels, rotation=45, ha="right")
+        ax.set_yticks(ticks)
+        ax.set_yticklabels(labels)
+    ax.set_title(title)
+    return ax
+
+
+def plot_indicators(
+    times: np.ndarray,
+    values: np.ndarray,
+    *,
+    ax: Axes | None = None,
+    title: str = "SHM Indicator",
+    ylabel: str = "Value",
+    **kwargs,
+) -> Axes:
+    """
+    Plot an SHM indicator time series (RMS variation, energy, frequency shift).
+
+    Parameters
+    ----------
+    times, values : array_like
+        Output of ``rms_variation``, ``energy_variation``, or ``frequency_shift``.
+    """
+    ax = _ensure_ax(ax)
+    kwargs.setdefault("marker", "o")
+    kwargs.setdefault("lw", 1.0)
+    kwargs.setdefault("ms", 4)
+    ax.plot(times, values, **kwargs)
+    ax.set(xlabel="Time [s]", ylabel=ylabel, title=title)
+    ax.grid(True, alpha=0.3)
+    return ax
+
+
 def plot_wvd(
     freqs: np.ndarray,
     times: np.ndarray,
