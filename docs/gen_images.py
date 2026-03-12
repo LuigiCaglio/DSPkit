@@ -449,4 +449,141 @@ ax_damp.legend(fontsize=7); ax_damp.grid(True, alpha=0.3)
 
 save(fig2, "emd_hht.png")
 
+# ===========================================================================
+# peaks_indicators.png
+# ===========================================================================
+print("peaks_indicators.png ...")
+
+from dspkit.peaks import find_peaks as dsp_find_peaks, peak_bandwidth
+from dspkit.indicators import rms_variation, frequency_shift
+from dspkit.plots import plot_peaks, plot_indicators
+
+t_pi, a1_pi, a2_pi = generate_2dof(duration=120.0, fs=FS, noise_std=1.0,
+                                      output="acceleration", seed=42)
+freqs_pi, Pxx_pi = psd(a1_pi, FS, nperseg=4096)
+
+pf_pi, pv_pi, _ = dsp_find_peaks(freqs_pi, Pxx_pi, distance_hz=5.0, max_peaks=3)
+times_rms, rms_vals = rms_variation(a1_pi, FS, segment_duration=10.0)
+times_f, dom_freqs = frequency_shift(a1_pi, FS, segment_duration=10.0)
+
+fig = plt.figure(figsize=(14, 8), constrained_layout=True)
+fig.suptitle("Peak Detection & SHM Indicators", fontsize=13, fontweight="bold")
+gs = gridspec.GridSpec(2, 2, figure=fig)
+
+ax = fig.add_subplot(gs[0, 0])
+plot_peaks(freqs_pi, Pxx_pi, pf_pi, pv_pi, ax=ax, db=True,
+           xlim=(0, 80), title="PSD — Peak Detection")
+
+pf_bw, bw, Q = peak_bandwidth(freqs_pi, Pxx_pi, peak_freqs=pf_pi)
+ax = fig.add_subplot(gs[0, 1])
+ax.barh(range(len(pf_bw)), bw, color="steelblue", edgecolor="black")
+ax.set_yticks(range(len(pf_bw)))
+ax.set_yticklabels([f"{f:.1f} Hz" for f in pf_bw])
+ax.set_xlabel("Bandwidth [Hz]")
+ax.set_title("Peak Bandwidth (half-power)")
+for i, (b, q) in enumerate(zip(bw, Q)):
+    ax.text(b + 0.05, i, f"Q = {q:.1f}", va="center", fontsize=9)
+ax.grid(True, axis="x", alpha=0.3)
+
+ax = fig.add_subplot(gs[1, 0])
+plot_indicators(times_rms, rms_vals, ax=ax,
+                title="RMS Variation (10 s segments)", ylabel="RMS [m/s²]")
+
+ax = fig.add_subplot(gs[1, 1])
+plot_indicators(times_f, dom_freqs, ax=ax,
+                title="Dominant Frequency Tracking", ylabel="Frequency [Hz]")
+ax.axhline(fn1, color="red", ls="--", lw=1, label=f"fn1={fn1:.1f} Hz")
+ax.legend(fontsize=8)
+
+save(fig, "peaks_indicators.png")
+
+
+# ===========================================================================
+# fdd.png
+# ===========================================================================
+print("fdd.png ...")
+
+from dspkit.fdd import fdd_svd, fdd_peak_picking, fdd_mode_shapes, efdd_damping
+from dspkit.plots import plot_singular_values, plot_mode_shape
+
+t_fdd, a1_fdd, a2_fdd = generate_2dof(duration=120.0, fs=FS, noise_std=1.0,
+                                         output="acceleration", seed=42)
+data_fdd = np.vstack([a1_fdd, a2_fdd])
+
+freqs_fdd, S_fdd, U_fdd = fdd_svd(data_fdd, FS, nperseg=4096)
+peak_freqs_fdd, peak_idx_fdd = fdd_peak_picking(
+    freqs_fdd, S_fdd, distance_hz=5.0, max_peaks=2,
+)
+modes_fdd = fdd_mode_shapes(U_fdd, peak_idx_fdd)
+zeta_fdd, fn_fdd = efdd_damping(freqs_fdd, S_fdd, U_fdd, peak_idx_fdd, FS)
+
+fig = plt.figure(figsize=(14, 8), constrained_layout=True)
+fig.suptitle("FDD — Frequency Domain Decomposition", fontsize=13, fontweight="bold")
+gs = gridspec.GridSpec(2, 2, figure=fig)
+
+ax = fig.add_subplot(gs[0, :])
+plot_singular_values(freqs_fdd, S_fdd, ax=ax, db=True,
+                     peak_freqs=peak_freqs_fdd, xlim=(0, 80))
+ax.axvline(fn1, color="cyan", ls=":", lw=1, alpha=0.7, label=f"fn1={fn1:.1f} Hz (theory)")
+ax.axvline(fn2, color="lime", ls=":", lw=1, alpha=0.7, label=f"fn2={fn2:.1f} Hz (theory)")
+ax.legend(fontsize=8)
+
+for i, (f, mode) in enumerate(zip(peak_freqs_fdd, modes_fdd)):
+    ax = fig.add_subplot(gs[1, i])
+    plot_mode_shape(mode, ax=ax, sensor_labels=["Mass 1", "Mass 2"],
+                    title=f"Mode {i+1} — {f:.2f} Hz")
+    if i < len(zeta_fdd) and not np.isnan(zeta_fdd[i]):
+        ax.text(0.95, 0.95, f"zeta = {zeta_fdd[i]:.4f}",
+                transform=ax.transAxes, ha="right", va="top", fontsize=10,
+                bbox=dict(boxstyle="round", fc="wheat", alpha=0.8))
+
+save(fig, "fdd.png")
+
+
+# ===========================================================================
+# multisensor_stats.png
+# ===========================================================================
+print("multisensor_stats.png ...")
+
+from dspkit.multisensor import correlation_matrix
+from dspkit.statistics import pdf_estimate, joint_histogram
+from dspkit.plots import plot_correlation_matrix, plot_pdf, plot_joint_histogram
+
+R = correlation_matrix(data_fdd)
+
+xi1, d1 = pdf_estimate(a1_fdd)
+xc, yc, H = joint_histogram(a1_fdd[::10], a2_fdd[::10], bins=60)
+
+fig = plt.figure(figsize=(14, 8), constrained_layout=True)
+fig.suptitle("Multi-Sensor & Probability Statistics", fontsize=13, fontweight="bold")
+gs = gridspec.GridSpec(2, 2, figure=fig)
+
+ax = fig.add_subplot(gs[0, 0])
+plot_correlation_matrix(R, ax=ax, labels=["Mass 1", "Mass 2"])
+
+ax = fig.add_subplot(gs[0, 1])
+plot_pdf(xi1, d1, ax=ax, hist_data=a1_fdd, hist_bins=80,
+         title="PDF — Mass 1 Acceleration")
+
+ax = fig.add_subplot(gs[1, 0])
+plot_joint_histogram(xc, yc, H, ax=ax,
+                     xlabel="Mass 1", ylabel="Mass 2",
+                     title="Joint Distribution")
+
+from dspkit.statistics import mahalanobis
+dist = mahalanobis(data_fdd[:, ::10])
+t_sub = np.arange(len(dist)) * 10.0 / FS
+ax = fig.add_subplot(gs[1, 1])
+sc = ax.scatter(t_sub, dist, c=dist, s=1, cmap="hot_r", alpha=0.5)
+plt.colorbar(sc, ax=ax, label="Distance")
+threshold = np.percentile(dist, 99)
+ax.axhline(threshold, color="red", ls="--", lw=1.2,
+           label=f"99th pct = {threshold:.1f}")
+ax.set_xlabel("Time [s]"); ax.set_ylabel("Mahalanobis Distance")
+ax.set_title("Mahalanobis Distance (outlier detection)")
+ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+
+save(fig, "multisensor_stats.png")
+
+
 print("Done. All images saved to", OUT)

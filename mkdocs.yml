@@ -68,5 +68,10 @@ nav:
       - Time-Frequency: api/timefreq.md
       - Instantaneous: api/instantaneous.md
       - EMD / HHT: api/emd.md
+      - Peaks: api/peaks.md
+      - SHM Indicators: api/indicators.md
+      - Multi-Sensor: api/multisensor.md
+      - FDD: api/fdd.md
+      - Statistics: api/statistics.md
       - Plots: api/plots.md
   - Examples: examples.md
