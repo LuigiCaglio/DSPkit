@@ -9,7 +9,13 @@ import warnings
 import numpy as np
 import pytest
 
-from dspkit.timefreq import cwt_scalogram, smoothed_pseudo_wv, stft, wigner_ville
+from dspkit.timefreq import (
+    cwt_scalogram,
+    smoothed_pseudo_wv,
+    stft,
+    synchrosqueeze_stft,
+    wigner_ville,
+)
 
 FS = 1000.0
 DURATION = 1.0  # short to keep WVD tests fast
@@ -224,3 +230,99 @@ class TestSmoothedPseudoWv:
         x = np.zeros(3000)
         with pytest.warns(UserWarning, match="O\\(N²\\)"):
             smoothed_pseudo_wv(x, FS, warn_above=2048)
+
+
+# ---------------------------------------------------------------------------
+# Synchrosqueezing (FSST)
+# ---------------------------------------------------------------------------
+
+def _energy_bins_for(fraction: float, profile: np.ndarray) -> int:
+    """How many bins hold `fraction` of the total energy — lower is sharper."""
+    p = np.sort(profile / profile.sum())[::-1]
+    return int((np.cumsum(p) < fraction).sum()) + 1
+
+
+class TestSynchrosqueezeStft:
+    def test_output_shapes(self):
+        x = _sine(100.0)
+        freqs, times, Tx = synchrosqueeze_stft(x, FS, nperseg=128)
+        assert freqs.shape[0] == 128 // 2 + 1
+        assert Tx.shape == (len(freqs), len(times))
+        assert np.iscomplexobj(Tx)
+
+    def test_concentrates_far_better_than_the_stft(self):
+        """The entire point: same window, dramatically sharper ridge."""
+        x = _sine(100.0)
+        freqs, _, Tx = synchrosqueeze_stft(x, FS, nperseg=256)
+        _, _, Zxx = stft(x, FS, nperseg=256)
+
+        sharp = _energy_bins_for(0.9, np.abs(Tx).sum(axis=1))
+        blurry = _energy_bins_for(0.9, np.abs(Zxx).sum(axis=1))
+        assert sharp < blurry / 3, (
+            f"FSST used {sharp} bins for 90% of the energy, STFT {blurry} — "
+            "synchrosqueezing should concentrate several times better"
+        )
+
+    def test_energy_lands_at_the_right_frequency(self):
+        x = _sine(100.0)
+        freqs, _, Tx = synchrosqueeze_stft(x, FS, nperseg=256)
+        peak = freqs[np.argmax(np.abs(Tx).sum(axis=1))]
+        df = freqs[1] - freqs[0]
+        assert abs(peak - 100.0) <= df, f"peak at {peak} Hz, expected ~100"
+
+    def test_two_tones_stay_separate(self):
+        x = _sine(80.0) + _sine(120.0)
+        freqs, _, Tx = synchrosqueeze_stft(x, FS, nperseg=256)
+        profile = np.abs(Tx).sum(axis=1)
+        # Both ridges present, and the valley between them is deep.
+        near = lambda f: profile[np.argmin(np.abs(freqs - f))]
+        assert near(80.0) > 0 and near(120.0) > 0
+        assert near(100.0) < 0.2 * min(near(80.0), near(120.0))
+
+    def test_boundary_frames_do_not_dominate(self):
+        """Zero-padded edges once produced garbage 64x the real ridge.
+
+        A discontinuity is broadband, so the phase derivative across one is
+        meaningless and reassigns to arbitrary rows. Frames now lie wholly
+        inside the signal; this pins that they cannot come back.
+        """
+        x = _sine(100.0)
+        _, _, Tx = synchrosqueeze_stft(x, FS, nperseg=256)
+        col_energy = np.abs(Tx).sum(axis=0)
+        assert col_energy[0] < 3 * np.median(col_energy)
+        assert col_energy[-1] < 3 * np.median(col_energy)
+
+    def test_times_are_frame_centres_inside_the_signal(self):
+        x = _sine(100.0)
+        _, times, _ = synchrosqueeze_stft(x, FS, nperseg=256)
+        half = 256 / 2 / FS
+        assert times[0] == pytest.approx(half)
+        assert times[-1] <= DURATION - half + 1e-9
+
+    def test_threshold_discards_noise_floor_bins(self):
+        x = _sine(100.0)
+        _, _, keep_all = synchrosqueeze_stft(x, FS, nperseg=256, threshold=0.0)
+        _, _, gated = synchrosqueeze_stft(x, FS, nperseg=256, threshold=0.5)
+        assert np.count_nonzero(gated) < np.count_nonzero(keep_all)
+
+    def test_tracks_a_chirp(self):
+        """First-order FSST is biased for chirps but must still follow one."""
+        x = _chirp(50.0, 200.0)
+        freqs, times, Tx = synchrosqueeze_stft(x, FS, nperseg=128)
+        mag = np.abs(Tx)
+        ridge = freqs[np.argmax(mag, axis=0)]
+        # Rising overall, and roughly on the true line at both ends.
+        assert ridge[-1] > ridge[0]
+        assert abs(ridge[0] - 50.0) < 25.0
+        assert abs(ridge[-1] - 200.0) < 25.0
+
+    def test_rejects_bad_parameters(self):
+        x = _sine(100.0)
+        with pytest.raises(ValueError):
+            synchrosqueeze_stft(x, FS, nperseg=0)
+        with pytest.raises(ValueError):
+            synchrosqueeze_stft(x, FS, nperseg=128, noverlap=128)
+        with pytest.raises(ValueError):
+            synchrosqueeze_stft(x, FS, nperseg=128, threshold=-1.0)
+        with pytest.raises(ValueError):
+            synchrosqueeze_stft(x[:10], FS, nperseg=128)

@@ -33,6 +33,7 @@ from dspkit.timefreq import (
     cwt_scalogram,
     wigner_ville,
     smoothed_pseudo_wv,
+    synchrosqueeze_stft,
 )
 from dspkit.instantaneous import (
     analytic_signal,
@@ -123,6 +124,7 @@ __all__ = [
     "stft",
     "cwt_scalogram",
     "wigner_ville",
+    "synchrosqueeze_stft",
     "smoothed_pseudo_wv",
     # instantaneous
     "analytic_signal",

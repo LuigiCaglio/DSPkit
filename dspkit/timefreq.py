@@ -7,6 +7,7 @@ stft                -- Short-Time Fourier Transform
 cwt_scalogram       -- Continuous Wavelet Transform (complex Morlet)
 wigner_ville        -- Wigner-Ville Distribution (WVD)
 smoothed_pseudo_wv  -- Smoothed Pseudo Wigner-Ville Distribution (SPWVD)
+synchrosqueeze_stft -- Fourier-based synchrosqueezing transform (FSST)
 
 Notes
 -----
@@ -341,3 +342,199 @@ def smoothed_pseudo_wv(
     freqs = np.fft.rfftfreq(N, d=2.0 / fs)   # 0 … fs/4, length N//2+1
     times = np.arange(N) / fs
     return freqs, times, SPWVD_full[:, : len(freqs)]
+
+
+# ---------------------------------------------------------------------------
+# Synchrosqueezing (Fourier-based)
+# ---------------------------------------------------------------------------
+
+def synchrosqueeze_stft(
+    x: np.ndarray,
+    fs: float,
+    window: str = "hann",
+    nperseg: int = 256,
+    noverlap: int | None = None,
+    threshold: float = 1e-3,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Fourier-based synchrosqueezing transform (FSST).
+
+    A spectrogram smears: a pure tone appears as a ridge as wide as the
+    window's bandwidth, and no choice of ``nperseg`` escapes that — it only
+    trades smear in frequency for smear in time.
+
+    The magnitude is smeared, but the *phase* is not. At every bin the phase
+    derivative still encodes the true instantaneous frequency of whatever
+    component dominates there. Synchrosqueezing estimates that frequency and
+    **moves** each bin's energy to it, so energy the window scattered across
+    many bins collapses back onto the one frequency it came from.
+
+    Reassignment happens in frequency only, never in time. That restriction is
+    what makes the transform invertible in principle — unlike classic
+    reassignment, which moves energy in both directions and cannot be undone —
+    and it is why the coefficients below are summed as complex numbers rather
+    than as magnitudes, so an inverse remains possible.
+
+    **The inverse is not implemented here yet.** Mode extraction (integrating
+    one ridge back into a time-domain signal, to get a single mode's damping or
+    to track a drifting frequency) is the payoff that invertibility buys, and
+    it needs a reconstruction routine this module does not currently provide.
+
+    The instantaneous frequency is obtained without numerical differentiation,
+    by computing a second STFT with the window's derivative::
+
+        omega(t, eta) = eta - Im( S_dg(t, eta) / (2 pi S_g(t, eta)) )
+
+    which is both cheaper and far better conditioned than differencing phase.
+
+    Parameters
+    ----------
+    x : array_like, shape (N,)
+    fs : float
+        Sampling frequency [Hz].
+    window : str
+        Window function (default ``'hann'``). Must be one scipy recognises.
+    nperseg : int
+        Segment length [samples]. Default 256.
+    noverlap : int or None
+        Overlapping samples. Defaults to ``nperseg * 3 // 4``.
+    threshold : float
+        Bins whose ``|S_g|`` falls below ``threshold * max(|S_g|)`` are
+        discarded rather than reassigned. Where the magnitude is near zero the
+        phase derivative is noise, and reassigning it scatters speckle across
+        the whole plane. Default 1e-3. Set to 0 to keep every bin.
+
+    Returns
+    -------
+    freqs : ndarray, shape (nperseg // 2 + 1,)
+        Frequency vector [Hz] — the same grid the STFT uses, since energy is
+        squeezed onto it rather than onto a new one.
+    times : ndarray
+        Time vector [s], centre of each segment. Unlike :func:`stft` this does
+        not start at zero: frames lie wholly inside the signal, so the first
+        centre sits half a window in.
+    Tx : ndarray, shape (len(freqs), len(times)), complex
+        Synchrosqueezed coefficients. ``np.abs(Tx)`` is the sharpened
+        time-frequency representation.
+
+    See Also
+    --------
+    stft : the transform this sharpens, and the one to compare it against.
+
+    Notes
+    -----
+    This is the **first-order** transform. It assumes each component's
+    amplitude and frequency vary slowly within one window, so the estimate is
+    biased for strongly chirping components — a fast chirp reassigns to a
+    frequency that lags the true one. Second-order variants correct this.
+
+    It sharpens; it does not create resolution. Two components closer together
+    than the window bandwidth are not separated — they merge into a single
+    sharp ridge, which is arguably more misleading than a blurry one, because
+    it looks confident. Choose ``nperseg`` so the components you care about are
+    resolved *before* squeezing.
+
+    References
+    ----------
+    Daubechies, Lu & Wu (2011), "Synchrosqueezed wavelet transforms: an
+    empirical mode decomposition-like tool", Appl. Comput. Harmon. Anal. 30(2).
+    Oberlin, Meignen & Perrier (2014), "The Fourier-based synchrosqueezing
+    transform", ICASSP.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from dspkit.timefreq import synchrosqueeze_stft
+    >>> fs = 1000.0
+    >>> t = np.arange(fs) / fs
+    >>> x = np.sin(2 * np.pi * 100 * t)
+    >>> freqs, times, Tx = synchrosqueeze_stft(x, fs, nperseg=128)
+    >>> # energy concentrates in the bin nearest 100 Hz
+    >>> int(round(freqs[np.argmax(np.abs(Tx).sum(axis=1))]))
+    100
+    """
+    x = np.asarray(x, dtype=float)
+    if nperseg <= 0:
+        raise ValueError("nperseg must be positive")
+    if noverlap is None:
+        noverlap = nperseg * 3 // 4
+    if not 0 <= noverlap < nperseg:
+        raise ValueError("noverlap must satisfy 0 <= noverlap < nperseg")
+    if threshold < 0:
+        raise ValueError("threshold must be non-negative")
+
+    g = _signal.get_window(window, nperseg, fftbins=True).astype(float)
+
+    # Derivative of the window, in the units the frequency axis uses (per
+    # second, hence the factor fs). np.gradient is second-order accurate in the
+    # interior, which is ample for the smooth windows in use here.
+    dg = np.gradient(g) * fs
+
+    # The two STFTs are framed here rather than by scipy, because scipy's
+    # ``scaling='spectrum'`` divides by ``window.sum()`` — and a symmetric
+    # window's derivative sums to zero. That normalisation would divide S_dg by
+    # ~1e-16 and destroy the ratio the whole method rests on. Framing both with
+    # the *same* unnormalised convention is what makes S_dg / S_g meaningful.
+    hop = nperseg - noverlap
+    if len(x) < nperseg:
+        raise ValueError(
+            f"signal is shorter than one segment ({len(x)} < {nperseg})")
+
+    # Deliberately *not* zero-padded at the boundaries, unlike ``stft`` above.
+    # Padding invents a step discontinuity where the data stops, and a
+    # discontinuity is broadband: the phase derivative across it is meaningless,
+    # so those frames reassign to arbitrary rows and pile up there. Measured on
+    # a pure tone, the padded edge frames came out 64x larger than the real
+    # ridge and swamped it. Frames therefore lie wholly inside the signal —
+    # there is no instantaneous frequency to report where there is no data.
+    n_frames = 1 + (len(x) - nperseg) // hop
+    starts = np.arange(n_frames) * hop
+    frames = np.lib.stride_tricks.sliding_window_view(x, nperseg)[starts]
+
+    S_g = np.fft.rfft(frames * g, axis=1).T
+    S_dg = np.fft.rfft(frames * dg, axis=1).T
+    freqs = np.fft.rfftfreq(nperseg, d=1.0 / fs)
+
+    # Reference the exponential to the window's *centre* rather than the frame
+    # start, which for bin j is a factor (-1)**j.
+    #
+    # This does not change the instantaneous frequency — the factor is common
+    # to S_g and S_dg and cancels in their ratio — but it matters enormously to
+    # the squeeze. Squeezing sums complex coefficients, so the bins straddling
+    # a ridge only reinforce each other if their phases are referenced to a
+    # common instant. Referenced to the frame start they alternate in sign
+    # across bins and partially cancel, which made |Tx| oscillate by a factor
+    # of 30 as a tone's phase drifted against the hop.
+    centre_phase = ((-1.0) ** np.arange(len(freqs)))[:, None]
+    S_g = S_g * centre_phase
+    S_dg = S_dg * centre_phase
+    # A frame describes its own centre, which is the instant its estimate
+    # belongs to. The first centre therefore sits half a window in, rather than
+    # at t=0 where no full window exists.
+    times = (starts + nperseg / 2.0) / fs
+
+    # Instantaneous frequency at every bin. Bins with no energy are masked out
+    # rather than divided: where |S_g| is near zero the phase derivative is
+    # noise, and reassigning it scatters speckle over the whole plane.
+    mag = np.abs(S_g)
+    peak = mag.max() if mag.size else 0.0
+    keep = mag > threshold * peak if peak > 0 else np.zeros(mag.shape, dtype=bool)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        correction = np.imag(S_dg / S_g) / (2.0 * np.pi)
+    omega = np.zeros(mag.shape)
+    omega[keep] = (freqs[:, None] - correction)[keep]
+
+    # Squeeze: accumulate each surviving bin into the output row nearest its
+    # estimated frequency. Coefficients are summed rather than magnitudes, so
+    # the result stays complex and therefore invertible.
+    Tx = np.zeros(S_g.shape, dtype=complex)
+    df = freqs[1] - freqs[0] if len(freqs) > 1 else 1.0
+    with np.errstate(invalid="ignore"):
+        rows = np.rint(np.nan_to_num(omega, nan=-1.0) / df).astype(int)
+    valid = keep & (rows >= 0) & (rows < len(freqs))
+
+    src_f, src_t = np.nonzero(valid)
+    np.add.at(Tx, (rows[src_f, src_t], src_t), S_g[src_f, src_t])
+
+    return freqs, times, Tx
