@@ -379,9 +379,9 @@ def differentiate_fft(
     at the cost of assuming periodicity -- which the zero-padding, and
     optionally the taper, are there to address.
 
-    The framing -- long DFT, zero-padded, operator applied in the frequency
-    domain -- is that of [1]_, which treats integration; differentiation is the
-    same construction with the reciprocal operator.
+    The construction -- long DFT, zero-padded, operator applied in the frequency
+    domain -- is shared with :func:`integrate_fft`, where its source is cited.
+    That source is about integration, so it is not claimed here.
 
     Parameters
     ----------
@@ -408,12 +408,6 @@ def differentiate_fft(
     ndarray, shape (N,)
         The differentiated signal. As with :func:`integrate_fft`, the first and
         last few samples are the least reliable.
-
-    References
-    ----------
-    .. [1] Brandt, A., Brincker, R. (2014). "Integrating time signals in
-       frequency domain -- Comparison with time domain integration."
-       Measurement, 58, 511-519.
     """
     if order < 1:
         raise ValueError("order must be 1 or more.")
