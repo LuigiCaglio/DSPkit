@@ -1,13 +1,35 @@
 # dspkit — what's left
 
-State as of 2026-09-02. Library work only; the GUI's own list lives in
-`../DSPkit-app/TODO.md`, which points here for anything algorithmic.
+State as of **2026-09-02**, at **v0.4.0**. Library work only; the app's own list
+lives in `../DSPkit-app/TODO.md`, which points here for anything algorithmic.
 
-Run the tests with `pytest tests/` — 256 passing.
+Run the tests with `pytest tests/` — **285 passing**.
 
-`ideas_DSPkit_chat.md` is the original scoping document and is now partly
-out of date (it says the toolkit avoids "heavy algorithms like full OMA",
-which stopped being true when `fdd.py` landed). Treat it as history.
+`ideas_DSPkit_chat.md` is the original scoping document and is now largely out
+of date; treat it as history.
+
+## Where to pick up
+
+Nothing here is blocking. In rough order of value:
+
+1. **§3.1, the FSST inverse.** Still the highest-value item. The coefficients
+   are summed as complex numbers precisely so an inverse stays possible, and it
+   is what mode extraction needs — integrate one ridge back to a time signal and
+   you can take damping off a single isolated mode, or follow one that drifts.
+2. **§1.3 and §1.4**, the OMA consequences of lag-window tapering, now that
+   §1.1/§1.2 have landed. §1.4 names a live defect in `fdd.py`; it is the only
+   item here that is a possible correctness problem rather than a feature.
+3. **§6.2, conditional mutual information.** The app has a natural home for it
+   already — it is the MI analogue of partial coherence, and the coherence pair
+   is there.
+4. **Shock response spectrum conventions** (maximax / primary / residual). The
+   solver in `response.py` supports it; only the peak-taking differs.
+
+**A habit worth keeping**, since it caught four real defects in this round:
+check claims by measuring, not by reading. The lag-window non-negativity, the
+log-decrement peak spacing, the MIMO condition number, and the mean-removal
+bias in `log_decrement` were all things the code or docs asserted confidently
+and the measurement contradicted.
 
 ---
 

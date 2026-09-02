@@ -2,7 +2,7 @@
 DSPkit — a digital signal processing toolkit for time series data.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from dspkit.spectral import (
     fft_spectrum,
