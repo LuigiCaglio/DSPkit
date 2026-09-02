@@ -5,11 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dspkit"
 version = "0.2.0"
-description = "DSP toolkit for structural health monitoring"
+description = "Digital signal processing toolkit for time series data"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-keywords = ["dsp", "signal-processing", "structural-health-monitoring", "vibration", "fft", "wavelet", "emd"]
+keywords = ["dsp", "signal-processing", "time-series", "spectral-analysis",
+            "time-frequency", "fft", "wavelet", "emd", "vibration",
+            "structural-health-monitoring"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",

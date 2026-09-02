@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "DSPkit"
-abstract: "A digital signal processing toolkit for time series, vibration and structural health monitoring."
+abstract: "A digital signal processing toolkit for time series data: spectral estimation, filtering, time-frequency analysis and decomposition."
 authors:
   - family-names: Caglio
     given-names: Luigi

@@ -1,8 +1,8 @@
 # DSPkit
 
-**A lightweight DSP toolkit for structural health monitoring.**
+**A lightweight digital signal processing toolkit for time series data.**
 
-DSPkit provides a clean, function-based API for the signal-processing tasks that appear daily in vibration analysis and structural health monitoring (SHM): spectral estimation, filtering, time-frequency analysis, and adaptive decomposition. It depends only on NumPy, SciPy, and Matplotlib — no heavy ML frameworks or extra wavelet libraries required.
+DSPkit provides a clean, function-based API for everyday signal processing: spectral estimation, filtering, time-frequency analysis, and adaptive decomposition. It is general-purpose — nothing in it assumes a domain — though the modal analysis it also carries (FDD/EFDD) comes from vibration and structural health monitoring work. It depends only on NumPy, SciPy, and Matplotlib — no heavy ML frameworks or extra wavelet libraries required.
 
 ---
 
