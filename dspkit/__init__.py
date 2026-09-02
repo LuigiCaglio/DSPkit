@@ -6,6 +6,10 @@ __version__ = "0.3.0"
 
 from dspkit.spectral import (
     fft_spectrum,
+    blackman_tukey_psd,
+    lag_window,
+    LAG_WINDOWS,
+    NONNEGATIVE_LAG_WINDOWS,
     psd,
     csd,
     coherence,
@@ -139,6 +143,8 @@ __all__ = [
     "crest_factor",
     "integrate",
     "differentiate",
+    "blackman_tukey_psd",
+    "lag_window",
     "integrate_fft",
     "differentiate_fft",
     "frf",

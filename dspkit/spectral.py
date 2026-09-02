@@ -509,3 +509,170 @@ def autocorrelation(
         acf_full = acf_full[:cutoff]
 
     return lags, acf_full
+
+
+# ─── lag windows and Blackman-Tukey ───────────────────────────────────────────
+
+#: Lag windows whose own Fourier transform is non-negative. Only these keep the
+#: Blackman-Tukey estimate non-negative; see :func:`lag_window` for why.
+NONNEGATIVE_LAG_WINDOWS = ("bartlett", "parzen", "exponential")
+
+LAG_WINDOWS = ("none", "bartlett", "parzen", "exponential", "hann", "hamming")
+
+
+def lag_window(name: str, m: int, decay: float = 3.0) -> np.ndarray:
+    """
+    One-sided lag window of length ``m``, for tapering an autocorrelation.
+
+    Parameters
+    ----------
+    name : str
+        One of ``'none'``, ``'bartlett'``, ``'parzen'``, ``'exponential'``,
+        ``'hann'``, ``'hamming'``.
+    m : int
+        Number of lags, including lag zero.
+    decay : float
+        For ``'exponential'``, how many time constants fit in ``m`` lags.
+        Larger decays faster.
+
+    Returns
+    -------
+    ndarray, shape (m,)
+        Window values for lags 0..m-1, starting at 1.0.
+
+    Notes
+    -----
+    **A lag window is not a data window, and the usual advice inverts.** A data
+    window multiplies the signal before transforming; a lag window multiplies
+    the autocorrelation. The biased autocorrelation is positive semi-definite,
+    so its transform cannot be negative -- you cannot get negative power out of
+    it. Tapering preserves that only if the *window's own transform* is
+    non-negative, because the estimate is then the true spectrum convolved with
+    a non-negative kernel.
+
+    - ``bartlett`` -- transform is the Fejer kernel, ``|Dirichlet|**2``.
+      Non-negative. Safe.
+    - ``parzen`` -- non-negative transform with better sidelobe decay. The usual
+      default.
+    - ``exponential`` -- transform is a Lorentzian, non-negative. Safe, and it
+      is what modal testing uses to add known artificial damping.
+    - ``none`` -- rectangular truncation, whose transform is the Dirichlet
+      kernel with negative sidelobes. **Unsafe**: can return negative power.
+    - ``hann``, ``hamming`` -- negative sidelobes as *lag* windows. **Unsafe**,
+      which is exactly backwards from their role as data windows. Same name,
+      opposite verdict, different domain.
+    """
+    key = str(name).lower()
+    if key not in LAG_WINDOWS:
+        raise ValueError(
+            "Unknown lag window {!r}. Choose one of: {}.".format(
+                name, ", ".join(LAG_WINDOWS))
+        )
+    m = int(m)
+    if m < 2:
+        raise ValueError("Need at least 2 lags.")
+
+    k = np.arange(m, dtype=float)
+    if key == "none":
+        return np.ones(m)
+    if key == "bartlett":
+        return 1.0 - k / m
+    if key == "exponential":
+        return np.exp(-decay * k / m)
+    if key in ("hann", "hamming"):
+        a = 0.5 if key == "hann" else 0.54
+        b = 0.5 if key == "hann" else 0.46
+        return a + b * np.cos(np.pi * k / m)
+    # Parzen, the standard piecewise cubic.
+    w = np.empty(m)
+    half = m / 2.0
+    lo = k <= half
+    r = k[lo] / m
+    w[lo] = 1.0 - 6.0 * r ** 2 + 6.0 * r ** 3
+    r = k[~lo] / m
+    w[~lo] = 2.0 * (1.0 - r) ** 3
+    return w
+
+
+def blackman_tukey_psd(
+    x: np.ndarray,
+    fs: float,
+    lag_window_name: str = "parzen",
+    max_lag: int | None = None,
+    decay: float = 3.0,
+    detrend_first: bool = True,
+):
+    """
+    Power spectral density as the Fourier transform of the autocorrelation.
+
+    The third route to a spectrum, alongside the periodogram and Welch. What
+    makes it worth having is the knob: the autocorrelation at lag k is estimated
+    from N-k sample pairs, so long lags are progressively noisier, and a lag
+    window trades resolution against variance directly and explicitly.
+
+    Be honest about the gain. Blackman-Tukey with a lag window of length M and
+    Welch with segments of length about M land in much the same place on bias
+    and variance. This is not a better estimator, it is a differently
+    parameterised one, and sometimes that parameterisation is the point.
+
+    Parameters
+    ----------
+    x : array_like, shape (N,)
+        Input signal.
+    fs : float
+        Sampling frequency [Hz].
+    lag_window_name : str
+        See :func:`lag_window`. Defaults to ``'parzen'``, which is safe and
+        well behaved.
+    max_lag : int or None
+        Number of lags to keep, including zero. Defaults to ``N // 10``.
+        Effective resolution is roughly ``fs / max_lag``, times a
+        window-dependent factor.
+    decay : float
+        Passed to the exponential window.
+    detrend_first : bool
+        Remove the mean before estimating, so a DC offset does not dominate.
+
+    Returns
+    -------
+    freqs : ndarray
+    psd : ndarray
+    negative_fraction : float
+        Share of the spectrum that came out negative. Zero for a non-negative
+        window; above zero it is a warning that the estimate is not a valid
+        spectrum, not merely a noisy one.
+
+    Notes
+    -----
+    Negative power is not possible, so if ``negative_fraction`` is above zero
+    the window is at fault rather than the data. Only the windows in
+    :data:`NONNEGATIVE_LAG_WINDOWS` guarantee it cannot happen.
+    """
+    x = np.asarray(x, dtype=float)
+    if x.ndim != 1:
+        raise ValueError("Expected a one-dimensional signal.")
+    n = x.size
+    if n < 16:
+        raise ValueError("Signal is too short for this estimate.")
+    if detrend_first:
+        x = x - x.mean()
+
+    m = int(max_lag) if max_lag else max(8, n // 10)
+    m = max(4, min(m, n - 1))
+
+    # Biased autocorrelation: divide by N, not N-k. That is what makes the
+    # sequence positive semi-definite, which is what makes the untapered
+    # transform non-negative in the first place.
+    full = np.correlate(x, x, mode="full") / n
+    acf = full[n - 1: n - 1 + m]
+
+    w = lag_window(lag_window_name, m, decay=decay)
+    tapered = acf * w
+
+    # Rebuild the two-sided sequence, which is what has a real transform.
+    two_sided = np.concatenate([tapered, tapered[-1:0:-1]])
+    spec = np.fft.rfft(two_sided).real / fs
+    freqs = np.fft.rfftfreq(two_sided.size, d=1.0 / fs)
+
+    neg = float(np.mean(spec < 0))
+    return freqs, spec, neg

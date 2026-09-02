@@ -10,6 +10,8 @@ import warnings
 
 import numpy as np
 import pytest
+
+import dspkit as dsp
 from scipy import signal as _signal
 
 from dspkit.spectral import autocorrelation, coherence, cross_correlation, csd, fft_spectrum, psd
@@ -394,3 +396,54 @@ class TestCrossCorrelationLagSign:
         y_advanced = np.roll(x, -delay)      # y leads x
         lags, ccf = cross_correlation(x, y_advanced)
         assert lags[int(np.argmax(ccf))] == -delay
+
+
+# ── Blackman-Tukey and lag windows ───────────────────────────────────────────
+
+def _narrowband(fs=200.0, n=40000, fn=10.0, zeta=0.03, seed=0):
+    from scipy import signal as _sig
+    rng = np.random.default_rng(seed)
+    wn = 2 * np.pi * fn
+    q = _sig.cont2discrete(([1.0], [1.0, 2 * zeta * wn, wn ** 2]), 1 / fs,
+                           method="bilinear")
+    return _sig.lfilter(np.asarray(q[0]).ravel(), np.asarray(q[1]).ravel(),
+                        rng.normal(size=n))
+
+
+def test_blackman_tukey_finds_the_peak():
+    fs = 200.0
+    x = _narrowband(fs)
+    for w in ("bartlett", "parzen", "exponential"):
+        f, p, _ = dsp.blackman_tukey_psd(x, fs, lag_window_name=w, max_lag=2000)
+        band = (f > 1) & (f < 40)
+        assert f[band][int(np.argmax(p[band]))] == pytest.approx(10.0, abs=0.3)
+
+
+def test_only_the_safe_lag_windows_keep_the_spectrum_non_negative():
+    """
+    The whole reason to care which window is used. Negative power is not a
+    possible value, and the windows whose own transform has negative sidelobes
+    produce it.
+    """
+    fs = 200.0
+    x = _narrowband(fs)
+    for w in dsp.NONNEGATIVE_LAG_WINDOWS:
+        _, _, neg = dsp.blackman_tukey_psd(x, fs, lag_window_name=w, max_lag=2000)
+        assert neg == 0.0, f"{w} should never produce negative power"
+
+    # Rectangular truncation is the clearest offender.
+    _, _, neg_none = dsp.blackman_tukey_psd(x, fs, lag_window_name="none",
+                                            max_lag=2000)
+    assert neg_none > 0.1
+
+
+def test_lag_window_rejects_an_unknown_name():
+    with pytest.raises(ValueError, match="Unknown lag window"):
+        dsp.lag_window("blackman-harris", 100)
+
+
+def test_lag_windows_start_at_one_and_do_not_grow():
+    for w in dsp.LAG_WINDOWS:
+        win = dsp.lag_window(w, 128)
+        assert win[0] == pytest.approx(1.0)
+        assert np.all(np.diff(win) <= 1e-12), f"{w} should be non-increasing"
