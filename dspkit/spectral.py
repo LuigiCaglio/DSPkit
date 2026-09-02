@@ -5,10 +5,118 @@ All functions accept plain NumPy arrays and return NumPy arrays.
 No hidden state, no side effects.
 """
 
+import warnings
 from typing import Literal
 
 import numpy as np
 from scipy import signal as _signal
+
+
+# ---------------------------------------------------------------------------
+# Welch segment bookkeeping (shared with dspkit.multisensor)
+#
+# Every Welch-averaged estimate in the library gets noisier as the segment
+# count falls, but coherence-type estimates do something worse: below a
+# minimum count they become identically 1.0 by construction, independently of
+# the data. These helpers exist so that case can be detected and named.
+# ---------------------------------------------------------------------------
+
+
+def _welch_segment_count(
+    n_samples: int,
+    nperseg: int,
+    noverlap: int | None = None,
+) -> int:
+    """
+    Number of segments ``scipy.signal.welch`` and friends will average over.
+
+    Mirrors scipy's own bookkeeping: ``nperseg`` is clipped to the record
+    length, ``noverlap`` defaults to ``nperseg // 2``, and the trailing
+    partial segment is discarded.
+    """
+    nperseg = int(min(nperseg, n_samples))
+    if noverlap is None:
+        noverlap = nperseg // 2
+    noverlap = int(noverlap)
+    step = nperseg - noverlap
+    if step <= 0:
+        return 0
+    return max(int((n_samples - noverlap) // step), 0)
+
+
+def _suggest_nperseg(
+    n_samples: int,
+    target_segments: int,
+    nperseg: int | None = None,
+    noverlap: int | None = None,
+) -> tuple[int, int]:
+    """
+    Largest ``nperseg`` reaching ``target_segments``, at the caller's overlap
+    *fraction*.
+
+    Returns ``(nperseg, n_segments)`` so an error message can quote a fix that
+    has actually been checked rather than one derived from a closed form that
+    ignores integer truncation.
+    """
+    if nperseg and noverlap is not None and nperseg > 0:
+        frac = min(float(noverlap) / float(nperseg), 0.95)
+    else:
+        frac = 0.5
+
+    # n_seg = (N - nperseg*frac) / (nperseg*(1 - frac))  ->  invert for nperseg
+    denom = target_segments * (1.0 - frac) + frac
+    guess = int(n_samples / denom) if denom > 0 else n_samples
+    guess = max(min(guess, n_samples), 8)
+
+    count = _welch_segment_count(n_samples, guess, int(round(guess * frac)))
+    while guess > 8 and count < target_segments:
+        guess -= max(guess // 64, 1)
+        count = _welch_segment_count(n_samples, guess, int(round(guess * frac)))
+    return guess, count
+
+
+def _check_welch_segments(
+    func_name: str,
+    n_samples: int,
+    nperseg: int,
+    noverlap: int | None,
+    hard_min: int,
+    min_segments: int,
+    hard_reason: str,
+    stacklevel: int = 3,
+) -> int:
+    """
+    Raise below ``hard_min`` segments, warn below ``min_segments``.
+
+    ``hard_reason`` says why the hard limit exists; it is quoted in the error
+    so the caller learns what the returned numbers would have meant.
+    """
+    n_seg = _welch_segment_count(n_samples, nperseg, noverlap)
+    ov = "nperseg // 2" if noverlap is None else str(noverlap)
+
+    if n_seg < hard_min:
+        fix_nperseg, fix_count = _suggest_nperseg(
+            n_samples, max(min_segments, hard_min), nperseg, noverlap
+        )
+        raise ValueError(
+            f"{func_name}: N={n_samples} with nperseg={nperseg}, "
+            f"noverlap={ov} gives {n_seg} Welch segment(s); "
+            f"at least {hard_min} are required. {hard_reason} "
+            f"Fix: shorten nperseg — nperseg={fix_nperseg} gives "
+            f"{fix_count} segments at the same overlap fraction."
+        )
+
+    if n_seg < min_segments:
+        warnings.warn(
+            f"{func_name}: only {n_seg} Welch segments "
+            f"(N={n_samples}, nperseg={nperseg}, noverlap={ov}). "
+            f"Coherence is biased upward by roughly 1/{n_seg} = "
+            f"{1.0 / n_seg:.2f} for unrelated signals; read values against "
+            f"that floor, not against zero. Shorten nperseg or pass "
+            f"min_segments to silence this.",
+            stacklevel=stacklevel,
+        )
+    return n_seg
 
 
 def fft_spectrum(
@@ -185,6 +293,7 @@ def coherence(
     nperseg: int | None = None,
     noverlap: int | None = None,
     detrend: str | Literal[False] = "constant",
+    min_segments: int = 8,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Magnitude-squared coherence between x and y.
@@ -207,17 +316,60 @@ def coherence(
         Overlapping samples. Defaults to ``nperseg // 2``.
     detrend : str or False
         Per-segment detrending.
+    min_segments : int
+        Warn below this many Welch segments (default 8). Fewer than two
+        segments raises instead — see Notes.
 
     Returns
     -------
     freqs : ndarray
     Cxy : ndarray
         Magnitude-squared coherence, values in [0, 1].
+
+    Raises
+    ------
+    ValueError
+        If the parameters give fewer than two Welch segments.
+
+    Notes
+    -----
+    **Coherence is made by the averaging, not by the formula.** Within a
+    single segment |Gxy|² = Gxx·Gyy identically, so a one-segment estimate is
+    exactly 1.0 at every frequency whatever the two signals are.
+    ``nperseg = len(x)`` is precisely that case, and it is rejected rather
+    than returned. Measured on the library's 2-DOF example (N = 20480,
+    fs = 1024 Hz): mean coherence 0.0675 at ``nperseg=1024`` (39 segments),
+    and exactly 1.0000 everywhere at ``nperseg=N``.
+
+    The bias does not stop at one segment, it only becomes finite. For two
+    independent signals averaged over ``n_d`` segments the expected coherence
+    is about ``1 / n_d``, so a value of 0.2 from 5 segments is what
+    independence looks like, not evidence of a relationship. ``min_segments``
+    warns while that floor is still large; it does not correct for it.
+
+    What this will not tell you: whether the relationship is causal, which
+    channel leads (use the cross-spectrum phase), whether a low value means
+    noise or nonlinearity, or whether a high value at one frequency survives
+    conditioning on the other channels in an array — for that see
+    ``dspkit.multisensor.partial_coherence``.
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
     if nperseg is None:
         nperseg = min(len(x), len(y), 1024)
+
+    _check_welch_segments(
+        "coherence",
+        min(len(x), len(y)),
+        nperseg,
+        noverlap,
+        hard_min=2,
+        min_segments=min_segments,
+        hard_reason=(
+            "A single-segment estimate is identically 1.0 at every frequency "
+            "by construction and says nothing about the signals."
+        ),
+    )
 
     freqs, Cxy = _signal.coherence(
         x,
@@ -245,8 +397,11 @@ def cross_correlation(
 
         CCF[k] = (1/N) Σ_n x[n] · y[n + k]
 
-    A positive peak at lag k > 0 means y leads x by k samples (i.e. x is a
-    delayed version of y).
+    A positive peak at lag k > 0 means **y is the delayed copy**: the pairing
+    is x[n] with y[n+k], so if y[n] = x[n-d] the peak sits at k = +d and x
+    leads y by d samples. (This docstring said the opposite until 2026-09-02;
+    the formula above was always right. ``test_cross_correlation_lag_sign``
+    pins the direction.)
 
     Parameters
     ----------

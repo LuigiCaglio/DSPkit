@@ -24,9 +24,9 @@ Based on NumPy + SciPy + Matplotlib.
 | `emd` | Empirical Mode Decomposition, Hilbert-Huang Transform, marginal spectrum |
 | `peaks` | Peak detection, bandwidth / Q-factor estimation, harmonic identification |
 | `indicators` | Spectral entropy, kurtosis, skewness, RMS / energy / frequency tracking |
-| `multisensor` | Correlation matrix, coherence matrix, PSD matrix |
+| `multisensor` | Correlation matrix, coherence matrix, PSD matrix, multiple and partial coherence |
 | `fdd` | Frequency Domain Decomposition (FDD/EFDD) — natural frequencies, mode shapes, damping |
-| `statistics` | PDF estimation (KDE), histograms, joint distributions, covariance, Mahalanobis distance |
+| `statistics` | PDF estimation (KDE), histograms, joint distributions, covariance, Mahalanobis distance, normality assessment, mutual information |
 | `plots` | Thin matplotlib wrappers for every analysis output |
 
 ---

@@ -64,6 +64,8 @@ from dspkit.multisensor import (
     correlation_matrix,
     coherence_matrix,
     psd_matrix,
+    multiple_coherence,
+    partial_coherence,
 )
 from dspkit.fdd import (
     fdd_svd,
@@ -77,6 +79,10 @@ from dspkit.statistics import (
     joint_histogram,
     covariance_matrix,
     mahalanobis,
+    qq_normal,
+    normality,
+    mutual_information,
+    mi_significance,
 )
 from dspkit.plots import (
     plot_signal,
@@ -151,6 +157,8 @@ __all__ = [
     "correlation_matrix",
     "coherence_matrix",
     "psd_matrix",
+    "multiple_coherence",
+    "partial_coherence",
     # fdd
     "fdd_svd",
     "fdd_peak_picking",
@@ -162,6 +170,10 @@ __all__ = [
     "joint_histogram",
     "covariance_matrix",
     "mahalanobis",
+    "qq_normal",
+    "normality",
+    "mutual_information",
+    "mi_significance",
     # plots
     "plot_signal",
     "plot_fft",

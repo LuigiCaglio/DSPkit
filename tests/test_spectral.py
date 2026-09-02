@@ -5,8 +5,12 @@ Strategy: use analytically known results (pure sines, white noise properties)
 so tests are deterministic and self-documenting.
 """
 
+import re
+import warnings
+
 import numpy as np
 import pytest
+from scipy import signal as _signal
 
 from dspkit.spectral import autocorrelation, coherence, cross_correlation, csd, fft_spectrum, psd
 from dspkit._testing import generate_2dof, generate_sine, natural_frequencies_2dof
@@ -298,3 +302,95 @@ class TestGenerators:
         fn1, fn2 = natural_frequencies_2dof()
         assert 8.0 < fn1 < 10.0
         assert 19.0 < fn2 < 23.0
+
+
+# ---------------------------------------------------------------------------
+# coherence: the single-segment trap
+# ---------------------------------------------------------------------------
+
+class TestCoherenceSegmentGuard:
+    def test_single_segment_would_be_exactly_one_everywhere(self):
+        """
+        The behaviour being prevented, pinned so it stays prevented.
+
+        With one Welch segment |Gxy|² = Gxx·Gyy identically, so scipy returns
+        1.0 at every frequency for two unrelated noise records. Measured on
+        the 2-DOF example: 0.0675 mean at nperseg=1024, 1.0000 at nperseg=N.
+        """
+        rng = np.random.default_rng(60)
+        x = rng.normal(0, 1, N)
+        y = rng.normal(0, 1, N)
+
+        _, raw = _signal.coherence(x, y, fs=FS, nperseg=N)
+        np.testing.assert_allclose(raw, 1.0, atol=1e-9)
+
+        with pytest.raises(ValueError, match="identically 1.0"):
+            coherence(x, y, FS, nperseg=N)
+
+    def test_error_names_the_numbers_and_a_fix(self):
+        rng = np.random.default_rng(61)
+        x = rng.normal(0, 1, N)
+        with pytest.raises(ValueError) as exc:
+            coherence(x, x, FS, nperseg=N)
+        message = str(exc.value)
+        assert f"N={N}" in message
+        assert f"nperseg={N}" in message
+        assert "Fix: shorten nperseg" in message
+
+    def test_suggested_nperseg_actually_works(self):
+        """The fix quoted in the error must survive being followed."""
+        rng = np.random.default_rng(62)
+        x = rng.normal(0, 1, N)
+        y = rng.normal(0, 1, N)
+        with pytest.raises(ValueError) as exc:
+            coherence(x, y, FS, nperseg=N)
+        suggested = int(re.search(r"nperseg=(\d+) gives", str(exc.value)).group(1))
+        _, Cxy = coherence(x, y, FS, nperseg=suggested)   # must not raise
+        assert np.mean(Cxy) < 0.5
+
+    def test_few_segments_warns_and_names_the_bias_floor(self):
+        rng = np.random.default_rng(63)
+        x = rng.normal(0, 1, N)
+        y = rng.normal(0, 1, N)
+        with pytest.warns(UserWarning, match="biased upward"):
+            _, Cxy = coherence(x, y, FS, nperseg=N // 3)
+        # The warning is earned: unrelated noise sits well above zero here.
+        assert np.mean(Cxy) > 0.15
+
+    def test_min_segments_can_be_lowered_to_silence_the_warning(self):
+        rng = np.random.default_rng(64)
+        x = rng.normal(0, 1, N)
+        y = rng.normal(0, 1, N)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            coherence(x, y, FS, nperseg=N // 3, min_segments=2)
+
+    def test_default_nperseg_is_quiet(self):
+        rng = np.random.default_rng(65)
+        x = rng.normal(0, 1, N)
+        y = rng.normal(0, 1, N)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            coherence(x, y, FS)
+
+
+class TestCrossCorrelationLagSign:
+    def test_cross_correlation_lag_sign(self):
+        """
+        Pins the direction of the lag axis, which the docstring had backwards
+        until 2026-09-02.
+
+        CCF[k] pairs x[n] with y[n+k]. If y is a delayed copy of x — that is,
+        x leads y — the peak sits at *positive* k.
+        """
+        rng = np.random.default_rng(66)
+        x = rng.normal(0, 1, 4000)
+        delay = 20
+
+        y_delayed = np.roll(x, delay)        # y[n] = x[n - 20]; x leads y
+        lags, ccf = cross_correlation(x, y_delayed)
+        assert lags[int(np.argmax(ccf))] == delay
+
+        y_advanced = np.roll(x, -delay)      # y leads x
+        lags, ccf = cross_correlation(x, y_advanced)
+        assert lags[int(np.argmax(ccf))] == -delay

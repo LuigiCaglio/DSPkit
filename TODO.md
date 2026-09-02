@@ -1,9 +1,9 @@
 # dspkit — what's left
 
-State as of 2026-08-07. Library work only; the GUI's own list lives in
+State as of 2026-09-02. Library work only; the GUI's own list lives in
 `../DSPkit-app/TODO.md`, which points here for anything algorithmic.
 
-Run the tests with `pytest tests/` — 189 passing.
+Run the tests with `pytest tests/` — 256 passing.
 
 `ideas_DSPkit_chat.md` is the original scoping document and is now partly
 out of date (it says the toolkit avoids "heavy algorithms like full OMA",
@@ -161,54 +161,193 @@ seams between existing things rather than in new ones.
 
 ---
 
-## 4. Coherence beyond pairs — is a sensor set predictive?
+## 4. Coherence beyond pairs — is a sensor set predictive?  *(done 2026-09-02)*
 
 The question: given a set of signals, do they carry enough information to
-predict the rest. Nothing here is implemented.
+predict the rest.
 
-### 4.1 Multiple and partial coherence — cheap, because `psd_matrix` exists
+### 4.1 Multiple and partial coherence — done 2026-09-02
 
-`multisensor.psd_matrix` already returns the full complex Hermitian CSD matrix
-`G[i, j, f]` (written for FDD, already tested). Both quantities are functions of
-its inverse, so this is a small addition to `multisensor.py` rather than new
-machinery:
+Shipped in `multisensor.py`, both returning per-frequency curves:
 
-- **Multiple coherence** of channel *i* against all others:
-  `1 - 1 / (G_ii * inv(G)_ii)` — how much of channel *i* is linearly explained
-  by the rest of the array, per frequency.
-- **Partial coherence** between *i* and *j* with the rest conditioned out:
-  `|inv(G)_ij|^2 / (inv(G)_ii * inv(G)_jj)` — separates a direct relationship
-  from one mediated by a third channel.
+```
+multiple_coherence(data, fs, window="hann", nperseg=None, noverlap=None,
+                   detrend="constant", ridge=1e-10, min_segments=None)
+    -> (freqs (M,), gamma2 (n_channels, M))
 
-**The care is in the conditioning, not the formula.** `G` goes near-singular
-exactly where channels are nearly redundant, which is the case being tested for,
-so it needs a pseudo-inverse or ridge regularisation rather than a plain
-`inv()`. And `G` is only full rank if there are more Welch averages than
-channels: with `n_segments <= n_channels` every coherence comes back at 1.0 and
-means nothing.
+partial_coherence(data, fs, window="hann", nperseg=None, noverlap=None,
+                  detrend="constant", ridge=1e-10, min_segments=None)
+    -> (freqs (M,), C (n_channels, n_channels, M))
+```
 
-That last failure mode is worth a guard, because the app can already reach it by
-a different route: `coherence()` with `nperseg = N` is a single segment, and
-ordinary coherence is then identically 1.0 at every frequency by construction —
-returned confidently, with no warning. Measured on the 2-DOF example: mean
-coherence 0.07 at the default `nperseg=1024` (39 segments), exactly 1.0000 at
-`nperseg=N`. Refuse, or warn, below a minimum segment count.
+**Ridge, not pseudo-inverse — and they are not interchangeable.** §4.1 said the
+conditioning "needs a pseudo-inverse or ridge regularisation", as if either
+would do. It measurably would not. When a channel is an exact linear
+combination of the others, G is exactly rank-deficient and the true multiple
+coherence is 1, which needs `inv(G)_ii → ∞`. `pinv` truncates precisely that
+direction and returns a *finite* `inv(G)_ii`, small enough that
+`1 - 1/(G_ii·inv_ii)` comes out **negative** — measured −0.6 to −2.9 on three
+channels where the third is the sum of the first two. Clipped to [0, 1] that
+becomes 0.0: the most redundant array that can exist, reported as perfectly
+independent. It fails hardest on the case the function exists to detect. A
+ridge keeps the limit and returns `1 - O(ridge)`.
+`test_pinv_would_fail_the_redundant_case` pins the difference so the choice
+cannot be quietly reversed.
 
-### 4.2 Mutual information — a different animal
+The ridge is applied to the **normalised** matrix `D⁻¹ G D⁻¹`,
+`D = diag(sqrt(G_ii))`, not to G. Both coherences are invariant under that
+normalisation, but a ridge is not: added to raw G it is an absolute quantity
+and would swamp a low-power channel while leaving a high-power one untouched.
+On the normalised matrix it is relative and treats every channel alike.
+Default 1e-10, a numerical floor bounding the condition number near 1e10 — the
+statistical control on near-singularity is the segment count, not this knob.
 
-Catches nonlinear and lagged dependence that coherence cannot, but it is an
-estimation problem rather than a transform, and it does not decompose by
-frequency. Binned estimators are badly biased at realistic sample sizes, so it
-wants a k-nearest-neighbour (Kraskov-Stogbauer-Grassberger) estimator, plus
-stated answers on lag handling and on significance (surrogate/permutation
-testing) before any number is shown to a user.
+**The rank claim above was nearly right, and the correction is useful.** §4.1
+said "with `n_segments <= n_channels` every coherence comes back at 1.0". The
+measured behaviour, four independent noise channels, N = 20480:
 
-Lower priority than 4.1, and much larger. Do 4.1 first and see whether the
-linear picture is visibly missing something.
+| n_segments | mean multiple coherence | q / n_d |
+|-----------:|------------------------:|--------:|
+|          3 |                   1.000 |    1.00 |
+|          4 |                   0.759 |    0.75 |
+|          9 |                   0.343 |    0.33 |
+|         19 |                   0.167 |    0.16 |
+|         39 |                   0.079 |    0.077 |
 
-### 4.3 The design question, which comes before either
+One formula explains the whole column: independent channels sit at the bias
+floor `q / n_d` with `q = n_channels - 1`, and that floor *reaches* 1.0 at
+`n_d = q`, which is exactly where the matrix goes singular. So "everything
+comes back at 1.0" is not a separate failure mode, it is the noise floor
+hitting the ceiling. At `n_d = n_channels` the matrix is invertible again and
+the values are **not** 1.0 — they are 0.75 for four channels — but the fit has
+no residual degrees of freedom and means nothing either. Both are refused:
+the guard is `n_segments > n_channels`, and it names the numbers and a working
+`nperseg` in the message.
 
-"Enough information to predict the rest" is a single verdict; coherence is a
-per-frequency curve. What the app should actually assert — a curve per channel,
-a band-integrated score, a ranked "most redundant sensor" table — decides which
-estimator is even needed. Settle that first.
+Deliberately not added: band-integrated scores and "most redundant sensor"
+rankings. Collapsing frequency needs a band the user must choose, and it
+destroys the thing that makes coherence diagnostic. The app derives its own
+summaries on top of the curves.
+
+### 4.2 Mutual information — done 2026-09-02
+
+Shipped in `statistics.py` rather than `multisensor.py`: it is a pairwise
+estimator over samples, next to `joint_histogram`, not a matrix operation.
+
+```
+mutual_information(x, y, k=3, lags=0, standardize=True, jitter=True, seed=0)
+    -> float, or ndarray (len(lags),) — nats
+
+mi_significance(x, y, k=3, lags=0, n_surrogates=199, method="shift",
+                standardize=True, jitter=True, seed=0)
+    -> dict: mi, lag, p_value, null_mean, null_p95, null_distribution,
+             n_samples, n_surrogates, k, method, interpretation
+```
+
+Kraskov-Stögbauer-Grassberger algorithm 1, max-norm neighbours via
+`scipy.spatial.cKDTree`. The two positions the scoping asked for, both stated
+in the docstrings:
+
+- **Lags.** MI has no frequency decomposition, so a lagged relationship is
+  invisible unless scanned for; at lag 0 a pure half-period delay can read as
+  independence. Every lag in a scan uses the *same* sample count (the window
+  is shrunk once, by the full lag span), because the estimator's bias depends
+  on N and a curve whose N varies along it is not comparable with itself. The
+  max over a scan of L lags is still a biased estimate of the max, and the
+  docstring says so.
+- **Significance.** Time-shifted surrogates by default, not permutation.
+  Permuting destroys autocorrelation as well as coupling, so it builds the
+  null for "y is white noise" rather than "y is unrelated to x"; the KSG floor
+  rises with autocorrelation, so a permutation null declares dependence far
+  too readily on real records. `test_shift_surrogates_keep_the_autocorrelation`
+  pins that the two nulls differ in the expected direction.
+
+The estimator's floor for independent signals is a positive number that
+depends on N and k (measured ~0.005 nats at N = 2000, k = 3), so a bare MI
+value has no reference point. Both docstrings say plainly that MI without a
+surrogate test establishes nothing.
+
+### 4.3 The design question — settled 2026-09-02
+
+Per-frequency curves, no scalars. Settled before implementing, as this item
+asked. See the "deliberately not added" paragraph in §4.1.
+
+### 4.4 The single-segment trap in ordinary `coherence` — done 2026-09-02
+
+`spectral.coherence` and `multisensor.coherence_matrix` now refuse fewer than
+two Welch segments and warn below `min_segments` (default 8). The refusal is
+unconditional because there is nothing to salvage: within one segment
+`|Gxy|² = Gxx·Gyy` identically, so the answer is 1.0 at every frequency for
+any two signals. `test_single_segment_would_be_exactly_one_everywhere` pins
+scipy producing exactly that, next to the raise that prevents it.
+
+The warning quotes the bias floor `1 / n_d` rather than just complaining about
+the count, since that floor is the number a caller has to read the result
+against.
+
+---
+
+## 5. Normality assessment — done 2026-09-02
+
+Not previously in this list. Added to `statistics.py`:
+
+```
+qq_normal(x, line="ols"|"quartile")
+    -> (theoretical (N,), ordered (N,), slope, intercept)
+
+normality(x, shapiro_max_n=5000, large_n=5000, seed=0)
+    -> dict: n, summary, and one sub-dict per indicator, each with an
+             'interpretation' string — skewness, excess_kurtosis,
+             dagostino_k2, jarque_bera, anderson_darling, shapiro_wilk
+```
+
+The reason it is worth having rather than four scipy calls: **at realistic
+record lengths every normality test rejects, and that is a property of the
+test.** Sampling scatter shrinks as 1/sqrt(N), so at 20 480 samples a skew of
+0.03 is detected with certainty and p < 1e-16 is the expected result for real
+data. `normality` therefore reports `n`, marks every p-value
+`reliable=False` above `large_n`, and says so in the returned structure rather
+than only in the docstring. Shapiro-Wilk is subsampled to 5000 points with
+`subsampled` and `n_used` reported. Excess kurtosis is labelled *excess* in
+its own interpretation string, because reading it as 3-for-normal is the
+common failure.
+
+Also fixed here: `spectral.cross_correlation`'s docstring said a positive peak
+means "y leads x", which is backwards. The formula `CCF[k] = Σ x[n]·y[n+k]`
+was always right; with `y[n] = x[n-d]` the peak sits at `k = +d`, so **x**
+leads y. Measured, corrected, and pinned by
+`test_cross_correlation_lag_sign`. `mutual_information`'s lag axis follows the
+same pairing. Anything built on the old sentence has its sign inverted.
+
+---
+
+## 6. Deferred, with reasons
+
+### 6.1 `plots.py` wrappers for the new outputs
+`plot_qq`, and a partial-coherence matrix plot. Every other estimator in the
+library has a thin plotting wrapper and these do not, so the set is
+inconsistent. Left out because the app renders these itself and a wrapper
+written without a consumer tends to fix the wrong presentation choices.
+
+### 6.2 Bias-floor correction on the coherence estimates
+The floor `q / n_d` is quoted in the docstrings and the warnings but never
+subtracted. Subtracting it would make the curves look cleaner and would be
+wrong in a familiar way: the floor is an expectation, not a per-frequency
+value, so removing it turns a known upward bias into an unknown two-sided one
+and puts negative coherences on the plot. Only worth revisiting alongside a
+proper confidence interval on the estimate, which is the thing actually
+wanted.
+
+### 6.3 Conditional mutual information
+`mi_significance` answers "are these two related"; it cannot answer "are they
+related other than through channel 3", which is what `partial_coherence` does
+in the linear case. Conditional MI needs a higher-dimensional KSG variant and
+many more samples for the same variance. Do it only if a case turns up where
+the linear picture is visibly wrong.
+
+### 6.4 Multiple coherence against a *subset* of channels
+Currently every other channel is used as a predictor. Choosing the subset is
+how you find out *which* sensors make one redundant, but the number of subsets
+is exponential and the answer is a model-selection problem, not a transform.
+`partial_coherence` covers the single-mediator case, which is most of the
+value.

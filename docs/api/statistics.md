@@ -1,6 +1,6 @@
 # Statistics
 
-Probability density estimation and joint statistics for signal characterisation: KDE, histograms, joint distributions, covariance, and Mahalanobis distance.
+Probability density estimation and joint statistics for signal characterisation: KDE, histograms, joint distributions, covariance, Mahalanobis distance, normality assessment, and mutual information for dependence that coherence cannot see.
 
 ![Statistics example](../images/multisensor_stats.png)
 
@@ -23,3 +23,19 @@ Probability density estimation and joint statistics for signal characterisation:
 ---
 
 ::: dspkit.statistics.mahalanobis
+
+---
+
+::: dspkit.statistics.qq_normal
+
+---
+
+::: dspkit.statistics.normality
+
+---
+
+::: dspkit.statistics.mutual_information
+
+---
+
+::: dspkit.statistics.mi_significance
