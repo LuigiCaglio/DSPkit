@@ -1,0 +1,32 @@
+{
+  "title": "DSPkit: a digital signal processing toolkit for time series data",
+  "description": "<p>DSPkit is a Python library for digital signal processing of time series data, built on NumPy and SciPy.</p><p>It covers spectral estimation (FFT, Welch PSD, CSD, coherence, autocorrelation), filtering, time-frequency analysis (STFT, CWT, Wigner-Ville, smoothed-pseudo WVD, Fourier synchrosqueezing), instantaneous quantities via the Hilbert transform, empirical mode decomposition and the Hilbert-Huang transform, peak detection, multi-channel relationships including multiple and partial coherence, mutual information, distribution and normality analysis, and Frequency Domain Decomposition for modal parameters.</p><p>The API is function-based and depends only on NumPy, SciPy and Matplotlib.</p>",
+  "upload_type": "software",
+  "license": "MIT",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Caglio, Luigi",
+      "orcid": "0000-0002-9830-2490"
+    }
+  ],
+  "keywords": [
+    "signal processing",
+    "digital signal processing",
+    "time series",
+    "spectral analysis",
+    "time-frequency analysis",
+    "Python",
+    "NumPy",
+    "SciPy",
+    "library"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "10.5281/zenodo.22257120",
+      "relation": "isSupplementTo",
+      "scheme": "doi",
+      "resource_type": "software"
+    }
+  ]
+}
