@@ -27,6 +27,8 @@ from dspkit.utils import (
     crest_factor,
     integrate,
     differentiate,
+    integrate_fft,
+    differentiate_fft,
 )
 from dspkit.timefreq import (
     stft,
@@ -126,6 +128,8 @@ __all__ = [
     "crest_factor",
     "integrate",
     "differentiate",
+    "integrate_fft",
+    "differentiate_fft",
     # timefreq
     "stft",
     "cwt_scalogram",

@@ -7,7 +7,9 @@ from dspkit.utils import (
     crest_factor,
     detrend,
     differentiate,
+    differentiate_fft,
     integrate,
+    integrate_fft,
     peak,
     rms,
 )
@@ -161,3 +163,72 @@ class TestDifferentiate:
         sl = slice(20, -20)
         corr = np.corrcoef(x[sl], dxdt[sl])[0, 1]
         assert corr > 0.999
+
+
+# ── frequency-domain integration and differentiation ─────────────────────────
+# The operators are exact for a band-limited signal, so these check against
+# analytic truth rather than against another implementation.
+
+def _tones(fs=200.0, n=8000):
+    t = np.arange(n) / fs
+    f1, f2 = 1.3, 4.7
+    disp = 0.02 * np.sin(2 * np.pi * f1 * t) + 0.008 * np.sin(2 * np.pi * f2 * t + 0.7)
+    vel = (0.02 * 2 * np.pi * f1 * np.cos(2 * np.pi * f1 * t)
+           + 0.008 * 2 * np.pi * f2 * np.cos(2 * np.pi * f2 * t + 0.7))
+    acc = (-0.02 * (2 * np.pi * f1) ** 2 * np.sin(2 * np.pi * f1 * t)
+           - 0.008 * (2 * np.pi * f2) ** 2 * np.sin(2 * np.pi * f2 * t + 0.7))
+    return fs, t, disp, vel, acc
+
+
+def _rel_err(est, ref, trim=200):
+    sl = slice(trim, len(est) - trim)
+    e = est[sl] - est[sl].mean()
+    r = ref[sl] - ref[sl].mean()
+    return float(np.linalg.norm(e - r) / np.linalg.norm(r))
+
+
+def test_integrate_fft_matches_analytic_velocity():
+    fs, _, _, vel, acc = _tones()
+    assert _rel_err(integrate_fft(acc, fs), vel) < 0.01
+
+
+def test_differentiate_fft_matches_analytic_velocity():
+    fs, _, disp, vel, _ = _tones()
+    assert _rel_err(differentiate_fft(disp, fs), vel) < 0.01
+
+
+def test_double_integration_beats_trapezoid_on_biased_noisy_data():
+    """The reason this function exists: trapezoid turns a DC bias into a parabola."""
+    fs, _, disp, _, acc = _tones()
+    rng = np.random.default_rng(0)
+    measured = acc + 0.02 * np.max(np.abs(acc)) * rng.normal(size=acc.size) + 0.35
+
+    trap = integrate(integrate(measured, fs), fs)
+    spec = integrate_fft(measured, fs, order=2, hp_cutoff=0.5)
+
+    assert _rel_err(spec, disp) < 0.15
+    # Not a marginal improvement: trapezoid is off by several hundred percent.
+    assert _rel_err(trap, disp) > 10 * _rel_err(spec, disp)
+
+
+def test_high_pass_does_not_touch_a_signal_above_the_cutoff():
+    """Filtering happens before zero-padding, so the padding envelope is safe."""
+    fs, _, _, vel, acc = _tones()
+    without = integrate_fft(acc, fs)
+    with_hp = integrate_fft(acc, fs, hp_cutoff=0.5)
+    assert _rel_err(with_hp, vel) == pytest.approx(_rel_err(without, vel), abs=1e-3)
+
+
+def test_cutoffs_outside_the_usable_range_are_refused():
+    fs, _, _, _, acc = _tones()
+    for bad in (0.0, -1.0, fs / 2, fs):
+        if bad == 0.0:
+            continue          # falsy: means "no cutoff", not an error
+        with pytest.raises(ValueError, match="Nyquist"):
+            integrate_fft(acc, fs, hp_cutoff=bad)
+
+
+def test_order_must_be_at_least_one():
+    fs, _, _, _, acc = _tones()
+    with pytest.raises(ValueError, match="order"):
+        integrate_fft(acc, fs, order=0)
