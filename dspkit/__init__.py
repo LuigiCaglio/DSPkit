@@ -45,6 +45,7 @@ from dspkit.response import (
     sdof_response,
     response_spectrum,
     log_decrement,
+    random_decrement,
 )
 from dspkit.instantaneous import (
     analytic_signal,
@@ -145,6 +146,7 @@ __all__ = [
     "sdof_response",
     "response_spectrum",
     "log_decrement",
+    "random_decrement",
     "envelope_spectrum",
     # timefreq
     "stft",

@@ -177,3 +177,57 @@ def test_envelope_spectrum_finds_a_modulation_hidden_under_a_carrier():
 def test_envelope_spectrum_rejects_a_band_outside_nyquist():
     with pytest.raises(ValueError, match="Nyquist"):
         dsp.envelope_spectrum(np.zeros(1000), 100.0, band=(10, 60))
+
+
+# ── random decrement ─────────────────────────────────────────────────────────
+
+def _ambient_sdof(fs, n, fn, zeta, seed=0):
+    """Ambient response of an SDOF to white excitation."""
+    rng = np.random.default_rng(seed)
+    wn = 2 * np.pi * fn
+    q = signal.cont2discrete(([1.0], [1.0, 2 * zeta * wn, wn ** 2]), 1 / fs,
+                             method="bilinear")
+    return signal.lfilter(np.asarray(q[0]).ravel(), np.asarray(q[1]).ravel(),
+                          rng.normal(size=n))
+
+
+def test_random_decrement_recovers_damping_from_ambient_data():
+    """
+    The point of the method: log decrement needs a decay, ambient data is not
+    one, and RDT manufactures a decay signature from it.
+    """
+    fs, n = 200.0, 400000
+    x = _ambient_sdof(fs, n, 3.0, 0.02)
+    rd = dsp.random_decrement(x, fs, segment_length=600)
+    assert rd["n_segments"] > 500
+    ld = dsp.log_decrement(rd["signature"], fs)
+    assert ld["zeta"] == pytest.approx(0.02, rel=0.15)
+    assert ld["fn"] == pytest.approx(3.0, rel=0.02)
+
+
+def test_autocorrelation_route_agrees_with_random_decrement():
+    """Both are proportional to the free decay, so they should broadly agree."""
+    fs, n = 200.0, 400000
+    x = _ambient_sdof(fs, n, 3.0, 0.02)
+    rd = dsp.log_decrement(dsp.random_decrement(x, fs, segment_length=600)["signature"], fs)
+    lags, acf = dsp.autocorrelation(x, fs=fs, normalize=True)
+    ac = dsp.log_decrement(acf[lags >= 0], fs)
+    assert ac["zeta"] == pytest.approx(rd["zeta"], rel=0.25)
+
+
+def test_random_decrement_needs_enough_triggers():
+    fs, n = 200.0, 4000
+    x = _ambient_sdof(fs, n, 3.0, 0.02)
+    with pytest.raises(ValueError, match="trigger"):
+        dsp.random_decrement(x, fs, trigger_level=100 * np.std(x))
+
+
+def test_cross_random_decrement_uses_the_second_channel():
+    fs, n = 200.0, 100000
+    x = _ambient_sdof(fs, n, 3.0, 0.02, seed=0)
+    y = _ambient_sdof(fs, n, 3.0, 0.02, seed=1)
+    auto = dsp.random_decrement(x, fs, segment_length=400)
+    cross = dsp.random_decrement(x, fs, segment_length=400, y=y)
+    # Triggered identically, but averaging a different channel.
+    assert cross["n_segments"] == auto["n_segments"]
+    assert not np.allclose(cross["signature"], auto["signature"])

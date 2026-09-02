@@ -19,6 +19,7 @@ __all__ = [
     "sdof_response",
     "response_spectrum",
     "log_decrement",
+    "random_decrement",
 ]
 
 
@@ -323,4 +324,135 @@ def log_decrement(
         "r_squared": float(r2),
         "peak_times": idx * dt,
         "peak_amplitudes": amps,
+    }
+
+
+def random_decrement(
+    x: np.ndarray,
+    fs: float,
+    trigger_level: float | None = None,
+    segment_length: int | None = None,
+    condition: str = "level_up",
+    max_segments: int | None = None,
+    y: np.ndarray | None = None,
+) -> dict:
+    """
+    Free-decay signature from an ambient record, by random decrement.
+
+    Log decrement needs a free decay, and ambient vibration is not one. This
+    manufactures one. Take many short segments that all begin from the same
+    condition -- a level crossing, say -- and average them. The random forcing
+    is uncorrelated with the trigger and averages towards zero; the structure's
+    own response to that condition is the same every time and survives. What is
+    left is proportional to the free decay, and can be handed to
+    :func:`log_decrement`.
+
+    Parameters
+    ----------
+    x : array_like, shape (N,)
+        Ambient response record.
+    fs : float
+        Sampling frequency [Hz].
+    trigger_level : float or None
+        The level a segment must start from. Defaults to the record's standard
+        deviation, which is the usual choice -- see the notes.
+    segment_length : int or None
+        Samples per segment. Defaults to ``N // 20``, capped at 2000.
+    condition : {'level_up', 'level', 'positive_point', 'local_extremum'}
+        What counts as a trigger. ``level_up`` requires an upward crossing of
+        ``trigger_level`` and is the standard choice: fixing both the level and
+        the slope makes every segment start from the same state, so the average
+        is a genuine free-decay shape rather than a mixture.
+    max_segments : int or None
+        Stop after this many triggers.
+    y : array_like or None
+        Optional second channel. When given, the trigger is taken from ``x``
+        and the segments are averaged from ``y``, giving the cross random
+        decrement signature -- the equivalent of a cross-correlation and what
+        you need for mode shapes across an array.
+
+    Returns
+    -------
+    dict with keys
+        ``tau`` (lag axis [s]), ``signature``, ``n_segments``,
+        ``trigger_level``, ``condition``.
+
+    Notes
+    -----
+    **The trigger level is a trade.** Higher levels give a cleaner starting
+    state but fewer segments, so the random part averages out less; lower levels
+    give more segments that are individually less alike. One standard deviation
+    is the usual compromise, and the segment count returned is what says whether
+    it worked -- below roughly 100 the signature is still visibly noisy.
+
+    This assumes the response is stationary and the excitation broadband and
+    roughly white. A narrowband or harmonic excitation -- rotating machinery,
+    say -- is *correlated* with the trigger and does not average away, so the
+    signature then contains the forcing rather than the structure.
+    """
+    x = np.asarray(x, dtype=float)
+    if x.ndim != 1:
+        raise ValueError("Expected a one-dimensional record.")
+    target = x if y is None else np.asarray(y, dtype=float)
+    if target.shape != x.shape:
+        raise ValueError("Both channels must be the same length.")
+
+    n = x.size
+    if segment_length is None:
+        segment_length = int(min(2000, max(64, n // 20)))
+    segment_length = int(segment_length)
+    if segment_length < 8 or segment_length >= n:
+        raise ValueError(
+            "segment_length must be between 8 and the record length "
+            "({}).".format(n)
+        )
+
+    sd = float(np.std(x))
+    if sd == 0:
+        raise ValueError("The record is constant; there is nothing to trigger on.")
+    level = sd if trigger_level is None else float(trigger_level)
+
+    cond = condition.lower()
+    if cond == "level_up":
+        # Upward crossings only: fixing the slope as well as the level means
+        # every segment starts from the same state, not from two mirrored ones.
+        hits = np.where((x[:-1] < level) & (x[1:] >= level))[0] + 1
+    elif cond == "level":
+        up = (x[:-1] < level) & (x[1:] >= level)
+        down = (x[:-1] > level) & (x[1:] <= level)
+        hits = np.where(up | down)[0] + 1
+    elif cond == "positive_point":
+        hits = np.where(x >= level)[0]
+    elif cond == "local_extremum":
+        hits = np.where((x[1:-1] > x[:-2]) & (x[1:-1] > x[2:]) & (x[1:-1] >= level))[0] + 1
+    else:
+        raise ValueError(
+            "condition must be one of 'level_up', 'level', 'positive_point', "
+            "'local_extremum'."
+        )
+
+    hits = hits[hits + segment_length < n]
+    if max_segments is not None:
+        hits = hits[: int(max_segments)]
+
+    if hits.size < 10:
+        raise ValueError(
+            "Only {} trigger(s) at level {:.4g}. Random decrement needs many "
+            "segments to average -- lower the trigger level, or use a longer "
+            "record.".format(hits.size, level)
+        )
+
+    seg = np.empty((hits.size, segment_length))
+    for i, h in enumerate(hits):
+        seg[i] = target[h:h + segment_length]
+    signature = seg.mean(axis=0)
+
+    return {
+        "tau": np.arange(segment_length) / fs,
+        "signature": signature,
+        "n_segments": int(hits.size),
+        "trigger_level": level,
+        "trigger_level_sd": level / sd,
+        "condition": cond,
+        "segment_length": segment_length,
     }
