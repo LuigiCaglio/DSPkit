@@ -302,9 +302,7 @@ def integrate_fft(
     the lowest frequency of interest and above the drift. For ``order=2`` the
     amplification goes as ``1/omega**2``, so it matters more, not less.
 
-    Follows the long-DFT method of Brandt & Brincker (2014), "Integrating time
-    signals in frequency domain -- comparison with time domain integration",
-    Measurement 58, 511-519.
+    Follows the long-DFT method of [1]_.
 
     Parameters
     ----------
@@ -333,6 +331,12 @@ def integrate_fft(
         The integrated signal. The mean and any linear trend are not physically
         recoverable -- integration loses the constant -- so the result is only
         meaningful as an oscillation about zero.
+
+    References
+    ----------
+    .. [1] Brandt, A., Brincker, R. (2014). "Integrating time signals in
+       frequency domain -- Comparison with time domain integration."
+       Measurement, 58, 511-519.
 
     Notes
     -----
@@ -372,8 +376,12 @@ def differentiate_fft(
     Compared with :func:`differentiate`, which uses central differences: finite
     differencing is itself a filter that rolls off towards Nyquist, so it
     understates high-frequency content. This is exact for a band-limited signal,
-    at the cost of assuming periodicity -- which the taper and zero-padding are
-    there to address.
+    at the cost of assuming periodicity -- which the zero-padding, and
+    optionally the taper, are there to address.
+
+    The framing -- long DFT, zero-padded, operator applied in the frequency
+    domain -- is that of [1]_, which treats integration; differentiation is the
+    same construction with the reciprocal operator.
 
     Parameters
     ----------
@@ -398,7 +406,14 @@ def differentiate_fft(
     Returns
     -------
     ndarray, shape (N,)
-        The differentiated signal.
+        The differentiated signal. As with :func:`integrate_fft`, the first and
+        last few samples are the least reliable.
+
+    References
+    ----------
+    .. [1] Brandt, A., Brincker, R. (2014). "Integrating time signals in
+       frequency domain -- Comparison with time domain integration."
+       Measurement, 58, 511-519.
     """
     if order < 1:
         raise ValueError("order must be 1 or more.")
