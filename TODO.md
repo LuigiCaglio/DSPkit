@@ -99,33 +99,18 @@ moves, and on what.
 
 ---
 
-## 2. Response spectrum
+## 2. Response spectrum — done 2026-09-02
 
-Not started. The peak response of a family of SDOF oscillators against period
-T, at one or more damping ratios, for a base-excitation record.
+`response.py` holds `sdof_response`, `response_spectrum` and `log_decrement`.
+Nigam-Jennings as specified; validated against the closed-form steady-state
+response at three frequency ratios including resonance, all within 0.1%.
 
-**Use Nigam–Jennings, not Newmark.** The exact piecewise-linear recurrence is a
-2×2 state transition, exact when the input is linearly interpolated between
-samples — which is the standard assumption anyway. It drops into
-`scipy.signal.lfilter` as an IIR filter, so 200 periods over a 20 000-sample
-record is milliseconds.
+Both traps in the original note are handled. Pseudo and true are returned
+separately (`PSv`/`PSa` alongside `Sv`/`Sa`) rather than one being labelled
+ambiguously, and periods below `10*dt` raise a warning naming the limit.
 
-Sensible home is a new `response.py` holding SDOF simulation generally, since
-the same machinery gives the shock response spectrum (SRS) used in mechanical
-and aerospace testing — same solver, different conventions (maximax / primary /
-residual).
-
-**The trap:** pseudo-velocity and pseudo-acceleration are *defined* as
-`Sv = ω·Sd` and `Sa = ω²·Sd`. They are **not** the oscillator's peak velocity
-and acceleration. Close for light damping, diverging as damping rises. Name
-them pseudo, or return both.
-
-Second: the recurrence is exact for the *interpolated* input, but the
-interpolation is the approximation, and it fails at short periods on a coarsely
-sampled record. The usual guidance is `dt < T/10` — warn or refuse below it
-rather than return a confident wrong curve.
-
----
+Not done: the shock response spectrum conventions (maximax / primary /
+residual). The solver supports it; only the peak-taking differs.
 
 ## 3. Synchrosqueezing, continued
 

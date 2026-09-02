@@ -1,5 +1,5 @@
 """
-DSPkit — DSP toolkit for structural health monitoring.
+DSPkit — a digital signal processing toolkit for time series data.
 """
 
 __version__ = "0.3.0"
@@ -37,9 +37,19 @@ from dspkit.timefreq import (
     smoothed_pseudo_wv,
     synchrosqueeze_stft,
 )
+from dspkit.frf import (
+    frf,
+    frf_mimo,
+)
+from dspkit.response import (
+    sdof_response,
+    response_spectrum,
+    log_decrement,
+)
 from dspkit.instantaneous import (
     analytic_signal,
     hilbert_envelope,
+    envelope_spectrum,
     instantaneous_phase,
     instantaneous_freq,
     hilbert_attributes,
@@ -130,6 +140,12 @@ __all__ = [
     "differentiate",
     "integrate_fft",
     "differentiate_fft",
+    "frf",
+    "frf_mimo",
+    "sdof_response",
+    "response_spectrum",
+    "log_decrement",
+    "envelope_spectrum",
     # timefreq
     "stft",
     "cwt_scalogram",

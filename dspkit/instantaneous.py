@@ -150,3 +150,88 @@ def hilbert_attributes(
     phase = np.unwrap(np.angle(z))
     freq = np.gradient(phase, 1.0 / fs) / (2.0 * np.pi)
     return envelope, phase, freq
+
+
+def envelope_spectrum(
+    x: np.ndarray,
+    fs: float,
+    band: tuple[float, float] | None = None,
+    filter_order: int = 4,
+    nperseg: int | None = None,
+    window: str = "hann",
+    detrend_envelope: bool = True,
+):
+    """
+    Spectrum of the signal's envelope, optionally within a band.
+
+    The standard tool for finding a repeating impact buried in a resonance --
+    a spalled bearing race, a chipped gear tooth. The impacts themselves are
+    weak and broadband, but they *excite* a structural resonance far above them,
+    and they amplitude-modulate it at the repetition rate. So the fault does not
+    appear in the spectrum of the signal, where the resonance dominates; it
+    appears in the spectrum of the signal's *envelope*, at the repetition rate
+    and its harmonics.
+
+    Parameters
+    ----------
+    x : array_like, shape (N,)
+        Input signal.
+    fs : float
+        Sampling frequency [Hz].
+    band : (low, high) or None
+        Band-pass applied before the envelope is taken, in hertz. Choosing it
+        around the excited resonance is the whole method -- see the notes.
+    filter_order : int
+        Butterworth order for that band-pass, applied zero-phase.
+    nperseg, window
+        Welch parameters for the spectrum of the envelope.
+    detrend_envelope : bool
+        Remove the envelope's mean before transforming. On by default: the mean
+        is a large DC term that otherwise dominates the plot and hides the
+        modulation lines, which are what you are looking for.
+
+    Returns
+    -------
+    freqs : ndarray
+        Frequency axis [Hz], spanning modulation rates rather than the
+        carrier frequencies of the original signal.
+    spectrum : ndarray
+        Envelope spectrum.
+    envelope : ndarray
+        The envelope itself, for plotting against time.
+
+    Notes
+    -----
+    **The band matters more than anything else here.** Pick it around the
+    resonance the impacts excite, which is usually a broad hump well above the
+    shaft rate -- often found by looking for the band whose kurtosis is highest,
+    since impulsiveness is what marks it. Too wide and the modulation is diluted
+    by everything else in the signal; too narrow and the sidebands carrying the
+    modulation are filtered out along with the noise.
+
+    Without a band this returns the envelope spectrum of the whole signal, which
+    is occasionally what you want and usually not.
+    """
+    x = np.asarray(x, dtype=float)
+    if x.ndim != 1:
+        raise ValueError("Expected a one-dimensional signal.")
+
+    from .filters import bandpass as _bandpass
+    from .spectral import psd as _psd
+
+    sig = x
+    if band is not None:
+        low, high = float(band[0]), float(band[1])
+        nyq = fs / 2.0
+        if not 0 < low < high < nyq:
+            raise ValueError(
+                "Band must satisfy 0 < low < high < {:g} Hz (Nyquist); "
+                "got {:g}-{:g}.".format(nyq, low, high)
+            )
+        sig = _bandpass(x, fs, low, high, order=filter_order, zero_phase=True)
+
+    env = hilbert_envelope(sig)
+    env_for_spectrum = env - env.mean() if detrend_envelope else env
+
+    freqs, spectrum = _psd(env_for_spectrum, fs=fs, window=window, nperseg=nperseg)
+    return freqs, spectrum, env
