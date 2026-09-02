@@ -43,3 +43,6 @@ Thumbs.db
 
 notes_copilot_signal_proc_DSPkit.md
 ideas_DSPkit_chat.md
+
+# GUI integration notes — belong with the app, not the library.
+GUI_NEW_FEATURES.md
