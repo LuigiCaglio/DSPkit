@@ -158,3 +158,57 @@ follow-up now the machinery exists.
 Multitaper spectrogram, Stockwell (S) transform. Both add coverage rather than
 capability, and the last several sessions have all shown the value being in the
 seams between existing things rather than in new ones.
+
+---
+
+## 4. Coherence beyond pairs — is a sensor set predictive?
+
+The question: given a set of signals, do they carry enough information to
+predict the rest. Nothing here is implemented.
+
+### 4.1 Multiple and partial coherence — cheap, because `psd_matrix` exists
+
+`multisensor.psd_matrix` already returns the full complex Hermitian CSD matrix
+`G[i, j, f]` (written for FDD, already tested). Both quantities are functions of
+its inverse, so this is a small addition to `multisensor.py` rather than new
+machinery:
+
+- **Multiple coherence** of channel *i* against all others:
+  `1 - 1 / (G_ii * inv(G)_ii)` — how much of channel *i* is linearly explained
+  by the rest of the array, per frequency.
+- **Partial coherence** between *i* and *j* with the rest conditioned out:
+  `|inv(G)_ij|^2 / (inv(G)_ii * inv(G)_jj)` — separates a direct relationship
+  from one mediated by a third channel.
+
+**The care is in the conditioning, not the formula.** `G` goes near-singular
+exactly where channels are nearly redundant, which is the case being tested for,
+so it needs a pseudo-inverse or ridge regularisation rather than a plain
+`inv()`. And `G` is only full rank if there are more Welch averages than
+channels: with `n_segments <= n_channels` every coherence comes back at 1.0 and
+means nothing.
+
+That last failure mode is worth a guard, because the app can already reach it by
+a different route: `coherence()` with `nperseg = N` is a single segment, and
+ordinary coherence is then identically 1.0 at every frequency by construction —
+returned confidently, with no warning. Measured on the 2-DOF example: mean
+coherence 0.07 at the default `nperseg=1024` (39 segments), exactly 1.0000 at
+`nperseg=N`. Refuse, or warn, below a minimum segment count.
+
+### 4.2 Mutual information — a different animal
+
+Catches nonlinear and lagged dependence that coherence cannot, but it is an
+estimation problem rather than a transform, and it does not decompose by
+frequency. Binned estimators are badly biased at realistic sample sizes, so it
+wants a k-nearest-neighbour (Kraskov-Stogbauer-Grassberger) estimator, plus
+stated answers on lag handling and on significance (surrogate/permutation
+testing) before any number is shown to a user.
+
+Lower priority than 4.1, and much larger. Do 4.1 first and see whether the
+linear picture is visibly missing something.
+
+### 4.3 The design question, which comes before either
+
+"Enough information to predict the rest" is a single verdict; coherence is a
+per-frequency curve. What the app should actually assert — a curve per channel,
+a band-integrated score, a ranked "most redundant sensor" table — decides which
+estimator is even needed. Settle that first.

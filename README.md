@@ -1,6 +1,11 @@
 # DSPkit
 
-**[Documentation](https://LuigiCaglio.github.io/DSPkit)**
+[![CI](https://github.com/LuigiCaglio/DSPkit/actions/workflows/ci.yml/badge.svg)](https://github.com/LuigiCaglio/DSPkit/actions/workflows/ci.yml)
+[![Docs](https://github.com/LuigiCaglio/DSPkit/actions/workflows/docs.yml/badge.svg)](https://LuigiCaglio.github.io/DSPkit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+
+**[Documentation](https://LuigiCaglio.github.io/DSPkit)** · **[Desktop app](https://github.com/LuigiCaglio/DSPkit-app)**
 
 A lightweight Digital Signal Processing (DSP) toolkit for time series data. Mostly for plotting and visual analysis.
 Based on NumPy + SciPy + Matplotlib.
