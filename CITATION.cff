@@ -6,5 +6,20 @@ abstract: "A digital signal processing toolkit for time series, vibration and st
 authors:
   - family-names: Caglio
     given-names: Luigi
+    # orcid: "https://orcid.org/XXXX-XXXX-XXXX-XXXX"   <- add your real iD
+version: "0.2.0"
+date-released: "2026-09-02"
+# Concept DOI: always resolves to the newest release, so a citation written
+# against it does not go stale when the next version is published.
+doi: "10.5281/zenodo.22257118"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.22257118"
+    description: "Concept DOI — all versions"
 repository-code: "https://github.com/LuigiCaglio/DSPkit"
 license: MIT
+keywords:
+  - signal processing
+  - vibration
+  - structural health monitoring
+  - modal analysis
