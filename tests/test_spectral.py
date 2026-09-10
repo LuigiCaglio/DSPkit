@@ -330,6 +330,14 @@ class TestCoherenceSegmentGuard:
             coherence(x, y, FS, nperseg=N)
 
     def test_error_names_the_numbers_and_a_fix(self):
+        """Named numbers, a candidate fix, and what that fix costs.
+
+        This used to assert the literal string "Fix: shorten nperseg", which is
+        the defect rather than the contract: shortening buys averages and spends
+        resolution, and a segment too short to resolve the sharpest peak
+        fabricates residual power. The message now has to offer the candidate
+        *and* name the cost, so neither direction is presented as free.
+        """
         rng = np.random.default_rng(61)
         x = rng.normal(0, 1, N)
         with pytest.raises(ValueError) as exc:
@@ -337,7 +345,8 @@ class TestCoherenceSegmentGuard:
         message = str(exc.value)
         assert f"N={N}" in message
         assert f"nperseg={N}" in message
-        assert "Fix: shorten nperseg" in message
+        assert re.search(r"nperseg=\d+ (?:would give|gives)", message)
+        assert "resolution" in message
 
     def test_suggested_nperseg_actually_works(self):
         """The fix quoted in the error must survive being followed."""
@@ -346,7 +355,8 @@ class TestCoherenceSegmentGuard:
         y = rng.normal(0, 1, N)
         with pytest.raises(ValueError) as exc:
             coherence(x, y, FS, nperseg=N)
-        suggested = int(re.search(r"nperseg=(\d+) gives", str(exc.value)).group(1))
+        suggested = int(re.search(r"nperseg=(\d+) (?:would give|gives)",
+                                  str(exc.value)).group(1))
         _, Cxy = coherence(x, y, FS, nperseg=suggested)   # must not raise
         assert np.mean(Cxy) < 0.5
 
@@ -447,3 +457,177 @@ def test_lag_windows_start_at_one_and_do_not_grow():
         win = dsp.lag_window(w, 128)
         assert win[0] == pytest.approx(1.0)
         assert np.all(np.diff(win) <= 1e-12), f"{w} should be non-increasing"
+
+
+# ── AR spectral estimation ───────────────────────────────────────────────────
+
+def _ar2(n=20000, a1=1.6, a2=-0.9, seed=0):
+    """A process whose true coefficients are known exactly."""
+    rng = np.random.default_rng(seed)
+    e = rng.normal(size=n)
+    x = np.zeros(n)
+    for i in range(2, n):
+        x[i] = a1 * x[i - 1] + a2 * x[i - 2] + e[i]
+    return x
+
+
+def test_both_ar_methods_recover_known_coefficients():
+    """The check that catches an off-by-one in the recursion, which nothing else does.
+
+    A wrong Levinson update still produces a plausible-looking spectrum, so the
+    only honest test is against a process whose coefficients are known. Both
+    estimators must land on a = [1, -1.6, 0.9] and an innovation variance of 1.
+    """
+    x = _ar2()
+    for method in dsp.AR_METHODS:
+        a, var = (dsp.spectral._burg if method == "burg"
+                  else dsp.spectral._yule_walker)(x, 2)
+        assert a[0] == 1.0
+        assert a[1] == pytest.approx(-1.6, abs=0.01), method
+        assert a[2] == pytest.approx(0.9, abs=0.01), method
+        assert var == pytest.approx(1.0, rel=0.05), method
+
+
+def test_ar_psd_peaks_at_the_true_resonance():
+    x = _ar2()
+    f, p, info = dsp.ar_psd(x, 1.0, order=2)          # fs = 1 sample/s
+    true = np.angle(np.roots([1.0, -1.6, 0.9])[0]) / (2 * np.pi)
+    assert f[np.argmax(p)] == pytest.approx(true, abs=0.002)
+    assert info["reflection_stable"] is True
+
+
+def test_ar_psd_resolves_what_welch_cannot_on_a_short_record():
+    """The reason the function exists, as a measurement rather than a claim."""
+    fs, n = 100.0, 200                                 # two seconds
+    t = np.arange(n) / fs
+    rng = np.random.default_rng(3)
+    x = (np.sin(2 * np.pi * 10.0 * t) + np.sin(2 * np.pi * 10.8 * t)
+         + 0.1 * rng.normal(size=n))
+
+    def peaks_between(f, p, lo=8.0, hi=13.0):
+        idx, _ = _signal.find_peaks(p, prominence=p.max() * 0.02)
+        return [float(f[i]) for i in idx if lo < f[i] < hi]
+
+    # Welch merges them at every segment length the record allows.
+    for nperseg in (200, 128, 64):
+        fw, pw = dsp.psd(x, fs, nperseg=nperseg)
+        assert len(peaks_between(fw, pw)) == 1, f"nperseg={nperseg}"
+
+    fa, pa, _ = dsp.ar_psd(x, fs, order=30, n_freqs=4096)
+    found = sorted(peaks_between(fa, pa))
+    assert len(found) == 2, found
+    assert found[0] == pytest.approx(10.0, abs=0.1)
+    assert found[1] == pytest.approx(10.8, abs=0.1)
+
+
+def test_ar_psd_conserves_power_against_welch():
+    """Different estimators of the same thing must integrate to the same power."""
+    rng = np.random.default_rng(1)
+    x = _signal.lfilter([1.0], [1.0, -0.7], rng.normal(size=8000))
+    fa, pa, _ = dsp.ar_psd(x, 100.0, order=8, n_freqs=4096)
+    fw, pw = dsp.psd(x, 100.0, nperseg=1024)
+    from scipy.integrate import trapezoid
+    assert trapezoid(pa, fa) == pytest.approx(trapezoid(pw, fw), rel=0.1)
+    assert trapezoid(pa, fa) == pytest.approx(np.var(x), rel=0.1)
+
+
+def test_ar_order_selection_prefers_the_true_order_for_a_clean_ar2():
+    x = _ar2(n=4000)
+    order, scores = dsp.ar_order_selection(x, max_order=20, criterion="bic")
+    # BIC penalises harder and should not wander far above the truth.
+    assert 2 <= order <= 6, order
+    assert np.isfinite(scores[2])
+
+
+def test_ar_psd_rejects_impossible_requests():
+    x = _ar2(n=200)
+    with pytest.raises(ValueError, match="method must be one of"):
+        dsp.ar_psd(x, 100.0, order=4, method="nonsense")
+    with pytest.raises(ValueError, match="more than"):
+        dsp.ar_psd(x[:4], 100.0, order=2)
+    with pytest.raises(ValueError, match="samples to fit"):
+        dsp.ar_psd(x, 100.0, order=500)
+
+
+# ── resolution bandwidth and segment advice ──────────────────────────────────
+
+def test_resolution_bandwidth_matches_the_known_window_constants():
+    """These are textbook values; a wrong formula would drift from all of them."""
+    fs, n = 1000.0, 1024
+    expected = {"hann": 1.5, "hamming": 1.3628, "boxcar": 1.0,
+                "blackman": 1.7268, "flattop": 3.7702}
+    for name, bins in expected.items():
+        be = dsp.resolution_bandwidth(fs, n, name)
+        assert be == pytest.approx(bins * fs / n, rel=1e-3), name
+
+
+def test_resolution_bandwidth_is_wider_than_the_bin_spacing():
+    # The trap it exists to close: fs/nperseg flatters the estimate.
+    fs, n = 1024.0, 4096
+    assert dsp.resolution_bandwidth(fs, n, "hann") > fs / n
+
+
+def test_segment_advice_finds_the_length_that_resolves_a_light_mode():
+    """A 1.2% damped mode needs a long segment, and the advice must say so.
+
+    The fixture's first mode is at 8.613 Hz with 1.218% damping, so its
+    half-power width is 0.2098 Hz and the classical Be/Br <= 1/4 rule needs a
+    resolution near 0.05 Hz. At fs = 1024 that is nperseg of about 32768 —
+    thirty-two second segments — which is exactly the answer a user would not
+    guess and would never reach by shortening nperseg for averages.
+    """
+    _, x, _ = generate_2dof(duration=600.0, fs=1024.0, seed=0)
+
+    short = dsp.segment_advice(x, 1024.0, nperseg=1024)
+    assert short["verdict"] in ("marginal", "unresolved", "squeezed")
+    assert short["ratio"] > 0.25
+    assert short["peak_freq"] == pytest.approx(8.6, abs=1.0)
+
+    good = dsp.segment_advice(x, 1024.0, nperseg=32768)
+    assert good["verdict"] == "ok"
+    assert good["ratio"] <= 0.25
+    # The measured width must be converging on the true 0.2098 Hz.
+    assert good["peak_bandwidth"] == pytest.approx(0.21, abs=0.06)
+
+
+def test_segment_advice_reports_both_failure_modes():
+    """Too few averages and too coarse a resolution are different diagnoses."""
+    _, x, _ = generate_2dof(duration=600.0, fs=1024.0, seed=0)
+
+    # Very long segments: resolution is ample, averages are not.
+    few = dsp.segment_advice(x, 1024.0, nperseg=65536, target_segments=20)
+    assert few["verdict"] == "too_few"
+    assert few["ratio"] < 0.25
+    assert few["bias_floor"] > 0.05
+    # And crucially it does not simply say "shorten nperseg".
+    assert "resolution" in few["advice"].lower()
+
+    coarse = dsp.segment_advice(x, 1024.0, nperseg=256)
+    assert coarse["ratio"] > coarse["ratio"] * 0 + 0.25
+    assert coarse["n_segments"] > few["n_segments"]
+
+
+def test_segment_advice_says_when_the_record_is_simply_too_short():
+    _, x, _ = generate_2dof(duration=20.0, fs=1024.0, seed=0)
+    r = dsp.segment_advice(x, 1024.0, nperseg=1024, target_segments=20)
+    assert r["verdict"] == "squeezed"
+    assert r["duration_for_both"] > r["record_duration"]
+    assert "record" in r["advice"]
+
+
+def test_the_welch_guardrail_no_longer_advises_only_shortening():
+    """The defect: every message ended at 'shorten nperseg'.
+
+    That is right for one failure mode and wrong for the other, and the warning
+    is the only place most users will ever read about either.
+    """
+    rng = np.random.default_rng(0)
+    a, b = rng.normal(size=4000), rng.normal(size=4000)
+    with pytest.warns(UserWarning) as rec:
+        dsp.coherence(a, b, 100.0, nperseg=1024)
+    msg = str(rec[0].message)
+    assert "resolution" in msg
+    assert "segment_advice" in msg
+
+    with pytest.raises(ValueError, match="resolution"):
+        dsp.coherence(a, b, 100.0, nperseg=4000)

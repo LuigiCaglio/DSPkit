@@ -261,7 +261,11 @@ class TestMultipleCoherence:
         message = str(exc.value)
         assert "n_channels (5)" in message
         assert "1 Welch segment" in message
-        assert "Fix: shorten nperseg" in message
+        # Was "Fix: shorten nperseg". The message now has to offer the
+        # candidate length *and* name what it costs — see the matching
+        # test in test_spectral.py for why one-sided advice was a defect.
+        assert "nperseg=" in message
+        assert "resolution" in message
 
     def test_zero_power_channel_does_not_blow_up(self):
         """A dead channel has no relationship with anything, and no NaNs."""

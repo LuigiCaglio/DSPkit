@@ -1,9 +1,9 @@
 # dspkit — what's left
 
-State as of **2026-09-02**, at **v0.4.0**. Library work only; the app's own list
+State as of **2026-09-10**, at **v0.5.0**. Library work only; the app's own list
 lives in `../DSPkit-app/TODO.md`, which points here for anything algorithmic.
 
-Run the tests with `pytest tests/` — **285 passing**.
+Run the tests with `pytest tests/` — **306 passing**.
 
 `ideas_DSPkit_chat.md` is the original scoping document and is now largely out
 of date; treat it as history.
@@ -19,7 +19,7 @@ Nothing here is blocking. In rough order of value:
 2. **§1.3 and §1.4**, the OMA consequences of lag-window tapering, now that
    §1.1/§1.2 have landed. §1.4 names a live defect in `fdd.py`; it is the only
    item here that is a possible correctness problem rather than a feature.
-3. **§6.2, conditional mutual information.** The app has a natural home for it
+3. **§6.3, conditional mutual information.** The app has a natural home for it
    already — it is the MI analogue of partial coherence, and the coherence pair
    is there.
 4. **Shock response spectrum conventions** (maximax / primary / residual). The
@@ -290,4 +290,180 @@ Currently every other channel is used as a predictor. Choosing the subset is
 how you find out *which* sensors make one redundant, but the number of subsets
 is exponential and the answer is a model-selection problem, not a transform.
 `partial_coherence` covers the single-mediator case, which is most of the
-value.
+value. Partly answered since: `error_spectrum` (§7) takes an explicit target
+and an explicit predictor set, so a named subset can now be scored directly —
+what is still missing is the search over subsets, which is the expensive half.
+
+---
+
+## 7. The error spectrum — landed 2026-09-10
+
+`error_spectrum` in `frf.py`, exported from the package, documented at
+`docs/api/frf.md` (a page the FRF module did not have at all before). Source:
+`P:\Postdoc_2025_2027\2026_09_September\coherence_error_spectrum.pdf`.
+
+It returns `(1 - gamma^2) S_dd` — the residual spectrum of the best linear
+predictor of one channel from the others — plus the coherent/error split of the
+target's power, the bias floor, the filters, the input conditioning, and the
+integrated unexplained variance. `frf_mimo` gained an `output_psd` key to feed
+it; nothing else changed.
+
+**Most of the theory was already here.** The optimal filter is H1, which `frf`
+returns. The multiple coherence against a designated target is what `frf_mimo`
+already computes. Partial coherence, the `q / n_d` bias floor and the
+per-frequency condition number were all in place. What was missing was the one
+thing the source note leads with: report the residual in the target's units,
+not the dimensionless coherence.
+
+Tests are in `test_frf_response.py`, nine of them, on `generate_shear4` in
+`_testing.py` — a four-storey shear chain under JONSWAP loading with a
+deliberately unmeasured second force, the only fixture in the suite where the
+true unexplainable share is known by construction. Its natural frequencies are
+pinned so the numbers below cannot drift silently. `docs/gen_images.py` draws
+`frf_prediction.png` from the same generator, so the figure on the docs page
+and the test numbers cannot disagree.
+
+Measured, not asserted:
+
+- Theory matches a **held-out** residual within 15% for one and three
+  predictors. In-sample is optimistic by construction and is not what is
+  checked.
+- A single accelerometer averages coherence 0.50 above the wave band, which
+  looks like a broken model, and still accounts for 99.8% of the target's
+  variance. That is the whole argument for the function.
+- The `q = 1` case reduces to ordinary coherence to 1e-10.
+
+### 7.1 The one-sided nperseg advice — fixed 2026-09-10, see §8
+
+`_check_welch_segments` in `spectral.py` warns only about **too few segments**,
+and every fix it suggests is "shorten nperseg". Three functions route through
+it, `coherence` among them.
+
+The opposite failure is worse and goes unmentioned. On a **noise-free**
+single-input version of the shear chain, where the true error spectrum is
+exactly zero, the apparent unexplained variance runs 3.8e-5, 1.6e-4, 6.3e-4 and
+2.4e-3 of the target as `B_e / B_r` goes 0.06, 0.12, 0.24, 0.49 — a clean
+square law and entirely an artefact of segment length. Because the spurious
+part is proportional to `S_dd` it is worst where the target is strong, so it
+can swamp the genuine residual. Shortening `nperseg` to win averages is
+therefore sometimes exactly the wrong move.
+
+`error_spectrum`'s docstring states this, but the advice one module over still
+contradicts it. The fix is a resolution-bandwidth check — `B_e ≈ 1.5 fs /
+nperseg` against the half-power bandwidth of the sharpest peak, with the
+classical `B_e / B_r <= 1/4` — and a message that names both directions. It
+needs the sharpest peak's bandwidth, which `peaks.peak_bandwidth` already
+computes, so the pieces exist.
+
+### 7.2 The predictor path — open
+
+`error_spectrum` returns `H` but nothing applies it. Reconstructing `d_hat(t)`
+and taking a real residual currently lives in `_reconstruct` in the test file,
+where two traps are recorded and worth promoting to the library: interpolate
+the filter's real and imaginary parts separately, since interpolating magnitude
+and phase corrupts it wherever the phase wraps; and trim the ends, because
+multiplying in frequency is a circular convolution and keeping the wrap-around
+inflated `var(e)` by a factor of two while leaving the Welch estimate of the
+residual PSD almost unchanged.
+
+That discrepancy is itself a useful diagnostic, which is an argument for
+shipping the function rather than leaving everyone to rediscover it.
+
+### 7.3 App integration — done 2026-09-10
+
+Landed as a third mode on the Predictability tab. See `../DSPkit-app/TODO.md`
+§8 for the app side. One thing there belongs here: the app's own example file
+turns out to be a live demonstration of §7.1, which is the strongest argument
+yet for fixing it.
+
+---
+
+---
+
+## 8. The nperseg trade, and a third spectral estimator — done 2026-09-10
+
+Closes §7.1 and adds the one piece of parametric estimation that belongs here.
+`spectral.py` gained `resolution_bandwidth`, `segment_advice`, `ar_psd` and
+`ar_order_selection`; all four are exported and documented on the Spectral API
+page. 306 tests pass, up from 294.
+
+### 8.1 §7.1 is fixed — the guardrail no longer advises one direction
+
+Every message from `_check_welch_segments` used to end at "Fix: shorten
+nperseg". That is right for too few averages and actively wrong for the other
+failure mode. Both messages now name the cost of shortening and point at
+`segment_advice`. Two tests asserted the old string and have been rewritten —
+they were encoding the defect, which is worth remembering when one of them
+"fails" after a message is improved.
+
+`segment_advice(x, fs, nperseg)` weighs both on the actual record and returns a
+verdict: `ok`, `marginal`, `unresolved`, `too_few` or `squeezed`. The last means
+the record cannot satisfy both, which is a statement about the *data* rather
+than the parameters, and it says how many seconds would.
+
+**Two things had to be got right before it said anything useful.**
+
+Peaks are detected on the dB spectrum with a prominence threshold *and* a
+dynamic-range window, because on a linear PSD every noise wiggle is a peak and
+the narrowest of those is always about one resolution bandwidth wide — the
+first version reported "unresolved" on every record ever, which is a diagnostic
+that never says anything. With few averages a PSD is noisy enough that 6 dB of
+prominence is nothing: on the 2-DOF fixture at 4 averages the narrowest
+"significant" peak was a noise spike at 182 Hz, fifty-odd dB below the modes.
+Peaks must also sit within 20 dB of the tallest.
+
+`resolution_bandwidth` uses the window's equivalent noise bandwidth,
+`N sum(w²)/(sum w)²`, not the bin spacing `fs/nperseg`, which is finer and
+flatters the estimate. Measured: Hann 1.5 bins exactly, Hamming 1.363,
+rectangular 1.0, Blackman 1.727, flat-top 3.770, independent of length.
+
+**A caution for anyone reading the numbers.** The 2-DOF fixture's first mode is
+at 8.613 Hz with 1.218% damping, so its half-power width is 0.2098 Hz and the
+classical `Be/Br <= 1/4` rule needs nperseg near 32768 at fs = 1024 — 32-second
+segments. That is not a number anyone guesses, and it is the opposite of what
+"shorten nperseg for more averages" would lead you to. It took a wrong hand
+derivation of the damping (0.79 Hz, from `c1/(2 m wn)`, which ignores the mode
+shape) to make the estimator look broken when it was converging correctly.
+Compute modal damping from the state matrix eigenvalues, not from a damper.
+
+### 8.2 `ar_psd` — the third classical estimator
+
+Burg by default, Yule-Walker offered for comparison, order by AIC or BIC.
+Deliberately *not* system identification: it returns a spectrum, which is why it
+belongs beside `psd` and `blackman_tukey_psd` rather than in omakit. ARX, ARMA
+and state-space models stay out — omakit's SSI-COV and p-LSCF already cover
+parametric identification for structures, kalmpy owns state-space, and a second
+weaker implementation here would give two answers to one question.
+
+What it earns: two tones at 10.0 and 10.8 Hz in noise, 2 s at 100 Hz, 200
+samples total. Welch merges them at every usable segment length (one peak, at
+10.50, 10.16 and 10.94 Hz for nperseg 200, 128 and 64); AR order 30 returns 9.99
+and 10.85 Hz.
+
+**Two bugs are worth recording because neither looks like a bug.**
+
+The Levinson update produced a plausible spectrum while being wrong. Only a
+test against a process with *known* coefficients caught it — `test_spectral.py`
+now fits an AR(2) with a = [1, -1.6, 0.9] and checks both estimators land on it.
+
+Burg's forward and backward error update aliased: `f[m:n] = fn + k*bn` overwrote
+the forward error in place, and the next line still needed the *old* values, but
+`fn` was a view. Copies, not views. The fit came out wrong and plausible.
+
+Order selection originally refit from scratch at every candidate order. Both
+recursions produce the order-p error on the way to order `max_order`, so one
+pass does it: 100 orders on 20480 samples went from seconds to 40 ms. That is
+what made the app's AR tab sit there computing.
+
+### 8.3 Left open
+
+- **A causal ARX one-step predictor.** `error_spectrum`'s docstring says the
+  coherence bound is what a causal model is judged against, and you still
+  cannot compute the thing being judged. Worth doing when that comparison is
+  actually wanted; it is a nicer argument than it is a need.
+- **AR spectra for several channels share nothing.** Each channel is fitted
+  independently, which is right for a spectrum and wrong for a multivariate
+  model. If a multichannel AR is ever wanted, that is omakit's ground.
+- **`segment_advice` looks at one channel.** The sharpest resonance in an array
+  usually appears in more than one, so this is nearly always fine, but a
+  sensor at a node of the sharpest mode would not show it.

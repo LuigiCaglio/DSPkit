@@ -2,7 +2,7 @@
 DSPkit — a digital signal processing toolkit for time series data.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from dspkit.spectral import (
     fft_spectrum,
@@ -11,8 +11,13 @@ from dspkit.spectral import (
     LAG_WINDOWS,
     NONNEGATIVE_LAG_WINDOWS,
     psd,
+    ar_psd,
+    ar_order_selection,
+    AR_METHODS,
     csd,
     coherence,
+    resolution_bandwidth,
+    segment_advice,
     autocorrelation,
     cross_correlation,
 )
@@ -44,6 +49,7 @@ from dspkit.timefreq import (
 from dspkit.frf import (
     frf,
     frf_mimo,
+    error_spectrum,
 )
 from dspkit.response import (
     sdof_response,
@@ -125,6 +131,11 @@ __all__ = [
     # spectral
     "fft_spectrum",
     "psd",
+    "ar_psd",
+    "ar_order_selection",
+    "AR_METHODS",
+    "resolution_bandwidth",
+    "segment_advice",
     "csd",
     "coherence",
     "autocorrelation",
@@ -149,6 +160,7 @@ __all__ = [
     "differentiate_fft",
     "frf",
     "frf_mimo",
+    "error_spectrum",
     "sdof_response",
     "response_spectrum",
     "log_decrement",

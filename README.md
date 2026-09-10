@@ -17,7 +17,7 @@ Based on NumPy + SciPy + Matplotlib.
 
 | Module | Functions |
 |---|---|
-| `spectral` | FFT amplitude spectrum, Welch PSD, CSD, coherence, autocorrelation |
+| `spectral` | FFT amplitude spectrum, Welch PSD, Blackman-Tukey PSD, AR (Burg / Yule-Walker) PSD, CSD, coherence, autocorrelation, resolution bandwidth and segment-length advice |
 | `filters` | Lowpass / highpass / bandpass / bandstop / notch filters, decimation |
 | `utils` | Detrend, RMS, peak, crest factor, integration, differentiation |
 | `timefreq` | STFT spectrogram, CWT scalogram (Morlet), Wigner-Ville, Smoothed Pseudo WVD |
@@ -25,6 +25,8 @@ Based on NumPy + SciPy + Matplotlib.
 | `emd` | Empirical Mode Decomposition, Hilbert-Huang Transform, marginal spectrum |
 | `peaks` | Peak detection, bandwidth / Q-factor estimation, harmonic identification |
 | `indicators` | Spectral entropy, kurtosis, skewness, RMS / energy / frequency tracking |
+| `frf` | H1 / H2 / H3 estimators with coherence, MIMO FRFs with input conditioning, error spectrum of a linear predictor |
+| `response` | SDOF response, response spectrum, log decrement, random decrement |
 | `multisensor` | Correlation matrix, coherence matrix, PSD matrix, multiple and partial coherence |
 | `fdd` | Frequency Domain Decomposition (FDD/EFDD) — natural frequencies, mode shapes, damping |
 | `statistics` | PDF estimation (KDE), histograms, joint distributions, covariance, Mahalanobis distance, normality assessment, mutual information |

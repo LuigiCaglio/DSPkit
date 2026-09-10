@@ -10,13 +10,23 @@ DSPkit provides a clean, function-based API for everyday signal processing: spec
 
 | Module | What it does |
 |---|---|
-| [`spectral`](api/spectral.md) | FFT amplitude spectrum, Welch PSD / CSD, coherence, autocorrelation |
+| [`spectral`](api/spectral.md) | Three PSD estimators — Welch, Blackman-Tukey and autoregressive — plus FFT spectrum, CSD, coherence, autocorrelation, and advice on the segment length they all depend on |
 | [`filters`](api/filters.md) | Zero-phase Butterworth filters (LP / HP / BP / BS / notch) and decimation |
 | [`utils`](api/utils.md) | Detrend, RMS, peak, crest factor, numerical integration and differentiation |
-| [`timefreq`](api/timefreq.md) | STFT, CWT scalogram (analytic Morlet), Wigner-Ville, Smoothed Pseudo WVD |
+| [`timefreq`](api/timefreq.md) | STFT, CWT scalogram (analytic Morlet), Wigner-Ville, Smoothed Pseudo WVD, Fourier synchrosqueezing |
 | [`instantaneous`](api/instantaneous.md) | Hilbert transform → envelope, instantaneous phase & frequency |
 | [`emd`](api/emd.md) | Empirical Mode Decomposition, Hilbert-Huang Transform, marginal spectrum |
+| [`frf`](api/frf.md) | H1 / H2 / H3 estimators, MIMO FRFs with input conditioning, and the error spectrum — what no linear model can explain, in the target's own units |
+| [`peaks`](api/peaks.md) | Peak detection, bandwidth and Q-factor, harmonic identification |
+| [`indicators`](api/indicators.md) | Spectral entropy, kurtosis, skewness, RMS and frequency tracking |
+| [`multisensor`](api/multisensor.md) | Correlation, coherence and PSD matrices; multiple and partial coherence |
+| [`fdd`](api/fdd.md) | Frequency Domain Decomposition (FDD / EFDD) — frequencies, mode shapes, damping |
+| [`statistics`](api/statistics.md) | Distributions, joint densities, covariance, Mahalanobis distance, normality, mutual information |
 | [`plots`](api/plots.md) | Thin matplotlib wrappers — every function accepts an `ax` argument |
+
+The response-spectrum and damping tools (`sdof_response`, `response_spectrum`,
+`log_decrement`, `random_decrement`) live in `response` and are documented
+alongside the FRF page.
 
 ---
 

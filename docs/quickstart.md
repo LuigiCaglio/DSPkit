@@ -44,6 +44,47 @@ lags, acf = dsp.autocorrelation(a1, fs=fs, normalize=True, max_lag=0.5)
 dsp.plot_autocorrelation(lags, acf, n_samples=len(a1), xlabel="Lag [s]")
 ```
 
+## Choosing the segment length, and when to stop using Welch
+
+`nperseg` can be wrong in two opposite directions, and only one of them is
+obvious. Too few averages leaves a noisy spectrum and an inflated coherence;
+too short a segment to resolve the sharpest peak smears it, which biases
+coherence *down* and fabricates residual power. `segment_advice` weighs both on
+your own record and says which — including "this record cannot do both", which
+is a statement about the data rather than the parameters.
+
+```python
+a = dsp.segment_advice(x1, fs, nperseg=1024)
+print(a["verdict"], "—", a["advice"])
+# resolution bandwidth, averages, bias floor and the sharpest peak found
+```
+
+When the record is genuinely too short, an autoregressive spectrum fits the
+whole of it at once instead of averaging segments, and can separate peaks Welch
+cannot:
+
+```python
+freqs, Pxx, info = dsp.ar_psd(x1, fs)          # order chosen by AIC
+freqs, Pxx, info = dsp.ar_psd(x1, fs, order=30)
+print(info["order"], info["reflection_stable"])
+```
+
+The order is part of the answer, not a tuning knob: too low merges peaks, too
+high invents them. Check any peak that only the AR estimate shows against
+`psd` before believing it.
+
+## What one signal cannot explain about another
+
+```python
+r = dsp.error_spectrum(target, predictors, fs, nperseg=2048)
+r["error_spectrum"]        # (1 - coherence) * target PSD, in the target's units
+r["unexplained_fraction"]  # the same thing as one number
+```
+
+Coherence says *where* a model fails; only this says whether that matters. A
+band where coherence collapses costs nothing if there is no power in it, which
+is the usual case.
+
 ## Filtering
 
 ```python

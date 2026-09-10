@@ -586,4 +586,78 @@ ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
 save(fig, "multisensor_stats.png")
 
 
+# ===========================================================================
+# frf_prediction.png
+# ===========================================================================
+print("frf_prediction.png ...")
+
+from dspkit._testing import generate_shear4
+from dspkit.frf import error_spectrum
+
+# Four hours: long enough that the bias floor is small, so the figure is not
+# quietly drawn in the regime error_spectrum warns about.
+sh = generate_shear4(duration=14_400.0)
+FS_SH = sh["fs"]
+NPS = 8192
+
+one = error_spectrum(sh["d"], sh["A"], FS_SH, nperseg=NPS)
+three = error_spectrum(sh["d"], np.vstack([sh["A"], sh["B"], sh["C"]]),
+                       FS_SH, nperseg=NPS)
+f_sh = one["freqs"]
+
+fig = plt.figure(figsize=(13, 7.5), constrained_layout=True)
+fig.suptitle("Coherence says where a model fails; the error spectrum says whether it matters",
+             fontsize=13, fontweight="bold")
+gs = gridspec.GridSpec(2, 2, figure=fig)
+
+ax = fig.add_subplot(gs[0, 0])
+ax.semilogx(f_sh, one["coherence"], lw=1.0, label="1 sensor")
+ax.semilogx(f_sh, three["coherence"], lw=1.0, color="k", label="3 sensors")
+ax.axhline(three["bias_floor"], color="orange", ls="--", lw=1.2,
+           label=f"bias floor q/n_d = {three['bias_floor']:.3f}")
+for fn in sh["fn"]:
+    ax.axvline(fn, color="grey", ls=":", lw=0.8)
+ax.set_xlabel("Frequency [Hz]"); ax.set_ylabel(r"$\gamma^2$")
+ax.set_title("Coherence — alarming above the wave band")
+ax.set_ylim(0, 1.05); ax.set_xlim(0.02, FS_SH / 2)
+ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+
+ax = fig.add_subplot(gs[0, 1])
+ax.loglog(f_sh, one["target_psd"], color="firebrick", lw=1.2, label=r"$S_{dd}$ (target)")
+ax.loglog(f_sh, one["error_spectrum"], lw=1.0, label="unexplained, 1 sensor")
+ax.loglog(f_sh, three["error_spectrum"], color="k", lw=1.0, label="unexplained, 3 sensors")
+for fn in sh["fn"]:
+    ax.axvline(fn, color="grey", ls=":", lw=0.8)
+ax.set_xlabel("Frequency [Hz]"); ax.set_ylabel(r"PSD [m$^2$/Hz]")
+ax.set_title("Error spectrum — the same failure, in metres")
+ax.set_xlim(0.02, FS_SH / 2)
+ax.legend(fontsize=8); ax.grid(True, alpha=0.3, which="both")
+
+ax = fig.add_subplot(gs[1, 0])
+names = ["A alone", "B alone", "C alone", "A, B, C"]
+sets = [[sh["A"]], [sh["B"]], [sh["C"]], [sh["A"], sh["B"], sh["C"]]]
+fracs = [100 * error_spectrum(sh["d"], np.vstack(p), FS_SH,
+                              nperseg=NPS)["unexplained_fraction"] for p in sets]
+bars = ax.bar(names, fracs, color=["#4C78A8", "#54A24B", "#B279A2", "#333333"])
+for b, v in zip(bars, fracs):
+    ax.text(b.get_x() + b.get_width() / 2, v, f"{v:.2f}%", ha="center",
+            va="bottom", fontsize=9)
+ax.set_ylabel("Unexplained variance of $d$ [%]")
+ax.set_title("What the coherence plot could not tell you")
+ax.grid(True, alpha=0.3, axis="y")
+
+ax = fig.add_subplot(gs[1, 1])
+ax.semilogx(f_sh, three["input_condition"], color="k", lw=1.0)
+for fn in sh["fn"]:
+    ax.axvline(fn, color="grey", ls=":", lw=0.8)
+ax.set_yscale("log")
+ax.set_xlim(0.02, FS_SH / 2)
+ax.set_xlabel("Frequency [Hz]"); ax.set_ylabel(r"cond($S_{xx}$)")
+ax.set_title("Predictor conditioning — worst at the modes")
+ax.grid(True, alpha=0.3, which="both")
+
+save(fig, "frf_prediction.png")
+
+
+
 print("Done. All images saved to", OUT)

@@ -70,6 +70,7 @@ nav:
       - EMD / HHT: api/emd.md
       - Peaks: api/peaks.md
       - SHM Indicators: api/indicators.md
+      - FRF and Prediction: api/frf.md
       - Multi-Sensor: api/multisensor.md
       - FDD: api/fdd.md
       - Statistics: api/statistics.md

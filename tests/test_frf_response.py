@@ -5,6 +5,7 @@ import pytest
 from scipy import signal
 
 import dspkit as dsp
+from dspkit._testing import generate_shear4
 
 
 def _sdof_filter(x, fs, fn, zeta):
@@ -231,3 +232,135 @@ def test_cross_random_decrement_uses_the_second_channel():
     # Triggered identically, but averaging a different channel.
     assert cross["n_segments"] == auto["n_segments"]
     assert not np.allclose(cross["signature"], auto["signature"])
+
+
+# ── error spectrum ───────────────────────────────────────────────────────────
+#
+# `generate_shear4` is the only fixture in the suite where the *true* answer to
+# "how much of this signal is unexplainable" is known: a second, deliberately
+# unmeasured force is injected, so the residual has a floor no amount of
+# estimation can remove. Its natural frequencies are 0.375, 0.984, 1.516 and
+# 1.985 Hz, which the first test pins so the numbers below cannot drift.
+
+def _reconstruct(H, welch_freqs, preds, fs, trim=0.02):
+    """Apply estimated filters to a record; both steps here are load-bearing."""
+    n = preds.shape[1]
+    grid = np.fft.rfftfreq(n, 1 / fs)
+    Dhat = np.zeros(grid.size, dtype=complex)
+    for i in range(preds.shape[0]):
+        # Real and imaginary parts separately -- interpolating magnitude and
+        # phase corrupts the filter wherever the phase wraps.
+        re = np.interp(grid, welch_freqs, H[i].real)
+        im = np.interp(grid, welch_freqs, H[i].imag)
+        Dhat += (re + 1j * im) * np.fft.rfft(preds[i])
+    dhat = np.fft.irfft(Dhat, n=n)
+    # Multiplying in frequency is a *circular* convolution, so the ends carry
+    # wrap-around transients. Keeping them inflated var(e) by 2x in testing.
+    cut = int(trim * n)
+    return dhat, slice(cut, n - cut)
+
+
+@pytest.fixture(scope="module")
+def shear4():
+    return generate_shear4()
+
+
+def test_shear_chain_fixture_has_the_intended_modes(shear4):
+    """If the fixture drifts, every number below drifts with it silently."""
+    assert shear4["fn"] == pytest.approx([0.375, 0.984, 1.516, 1.985], abs=1e-3)
+
+
+def test_error_spectrum_reduces_to_ordinary_coherence_for_one_predictor(shear4):
+    """The q=1 case must collapse to |Sad|^2/(Saa Sdd), not merely resemble it."""
+    fs = shear4["fs"]
+    d, a = shear4["d"], shear4["A"]
+    r = dsp.error_spectrum(d, a, fs, nperseg=8192)
+    _, coh = dsp.coherence(a, d, fs, nperseg=8192)
+    assert np.max(np.abs(r["coherence"] - coh)) < 1e-8
+
+
+def test_error_spectrum_splits_the_target_power_exactly(shear4):
+    """Coherent plus error must return the target spectrum, bin by bin."""
+    r = dsp.error_spectrum(shear4["d"], shear4["A"], shear4["fs"], nperseg=8192)
+    total = r["coherent_power"] + r["error_spectrum"]
+    assert np.allclose(total, r["target_psd"], rtol=1e-12, atol=0.0)
+    assert np.all(r["error_spectrum"] >= 0.0)
+
+
+def test_error_spectrum_predicts_a_held_out_residual(shear4):
+    """The claim worth testing: this is the residual you actually get.
+
+    Fit on one half, filter the other, compare. In-sample would be optimistic
+    by construction -- the filter has q complex coefficients per frequency
+    line -- so the comparison is made out of sample.
+    """
+    fs = shear4["fs"]
+    d = shear4["d"]
+    half = d.size // 2
+    tr, te = slice(0, half), slice(half, d.size)
+
+    for preds in ([shear4["A"]], [shear4["B"]],
+                  [shear4["A"], shear4["B"], shear4["C"]]):
+        P = np.vstack(preds)
+        r = dsp.error_spectrum(d[tr], P[:, tr], fs, nperseg=8192)
+        dhat, keep = _reconstruct(r["H"], r["freqs"], P[:, te], fs)
+        measured = np.var(d[te][keep] - dhat[keep])
+        assert r["unexplained_variance"] == pytest.approx(measured, rel=0.15)
+
+
+def test_low_coherence_band_can_be_irrelevant(shear4):
+    """Why the error spectrum exists: the coherence plot alone cries wolf."""
+    fs = shear4["fs"]
+    r = dsp.error_spectrum(shear4["d"], shear4["A"], fs, nperseg=8192)
+    f = r["freqs"]
+    band = (f > 0.5) & (f < 3.0)
+    # Coherence says the model is worthless over most of that band ...
+    assert r["coherence"][band].mean() < 0.7
+    # ... while under 0.5% of the target's variance lives there.
+    assert r["unexplained_fraction"] < 0.005
+
+
+def test_more_predictors_lower_the_error_spectrum(shear4):
+    """Each sensor fails at different frequencies, so together they do better."""
+    fs = shear4["fs"]
+    d = shear4["d"]
+    one = dsp.error_spectrum(d, shear4["A"], fs, nperseg=8192)
+    three = dsp.error_spectrum(
+        d, np.vstack([shear4["A"], shear4["B"], shear4["C"]]), fs, nperseg=8192)
+    assert three["unexplained_variance"] < 0.5 * one["unexplained_variance"]
+    # Multiple coherence is bounded below by the best ordinary one, everywhere.
+    assert np.all(three["coherence"] >= three["ordinary_coherence"].max(axis=0)
+                  - 1e-9)
+
+
+def test_short_segments_manufacture_an_error_spectrum():
+    """The trap: on a noise-free single-input system the truth is exactly zero.
+
+    With one measured force and no noise the map from acceleration to
+    displacement is a single exact transfer function, so anything the
+    estimator reports as unexplained is resolution bias. It scales as
+    (Be/Br)^2, which is what pins the cause.
+    """
+    s = generate_shear4(noise_frac=0.0, unmeasured_frac=0.0)
+    fs = s["fs"]
+    fracs = [dsp.error_spectrum(s["d"], s["A"], fs, nperseg=n)["unexplained_fraction"]
+             for n in (8192, 4096, 2048)]
+    # Nowhere near zero, and growing fast, despite a true residual of zero.
+    assert fracs[0] < 1e-3
+    for lo, hi in zip(fracs, fracs[1:]):
+        assert 3.0 < hi / lo < 5.0        # halving nperseg quadruples it
+
+
+def test_error_spectrum_warns_when_the_bias_floor_is_large(shear4):
+    """Optimistic by roughly q/n_d, and the user has to be told which way."""
+    short = shear4["d"][:60000]
+    preds = np.vstack([shear4["A"][:60000], shear4["B"][:60000],
+                       shear4["C"][:60000]])
+    with pytest.warns(UserWarning, match="bias floor"):
+        r = dsp.error_spectrum(short, preds, shear4["fs"], nperseg=16384)
+    assert r["bias_floor"] > 0.1
+
+
+def test_error_spectrum_rejects_mismatched_lengths(shear4):
+    with pytest.raises(ValueError, match="same length"):
+        dsp.error_spectrum(shear4["d"], shear4["A"][:-10], shear4["fs"])
