@@ -9,6 +9,7 @@ import warnings
 from typing import Literal
 
 import numpy as np
+from scipy import fft as _fft_mod
 from scipy import signal as _signal
 
 
@@ -476,6 +477,18 @@ def cross_correlation(
     return lags, ccf_two
 
 
+def _biased_acf(x: np.ndarray, m: int) -> np.ndarray:
+    """First `m` lags of sum(x[n] x[n+k]) / N, through the FFT.
+
+    Same values as ``np.correlate(x, x, "full")[N-1:N-1+m] / N``, which is
+    O(N^2): minutes on a few hundred thousand samples.
+    """
+    n = x.size
+    nfft = _fft_mod.next_fast_len(2 * n - 1, real=True)
+    X = np.fft.rfft(x, n=nfft)
+    return np.fft.irfft(X * np.conj(X), n=nfft)[:m] / n
+
+
 def autocorrelation(
     x: np.ndarray,
     fs: float | None = None,
@@ -511,9 +524,12 @@ def autocorrelation(
     x = np.asarray(x, dtype=float)
     N = len(x)
 
-    # FFT-based circular correlation then truncate to causal (positive) lags
-    Xf = np.fft.rfft(x, n=2 * N)
-    acf_full = np.fft.irfft(Xf * np.conj(Xf))[:N]
+    # FFT-based correlation, then truncate to causal (positive) lags. Any
+    # padding to at least 2N - 1 avoids wrap-around; a fast length rather than
+    # exactly 2N, which can be an awkward size (2 x 247,742 runs ~10x slower).
+    nfft = _fft_mod.next_fast_len(2 * N - 1, real=True)
+    Xf = np.fft.rfft(x, n=nfft)
+    acf_full = np.fft.irfft(Xf * np.conj(Xf), n=nfft)[:N]
 
     if normalize:
         acf_full = acf_full / acf_full[0]
@@ -682,8 +698,7 @@ def blackman_tukey_psd(
     # Biased autocorrelation: divide by N, not N-k. That is what makes the
     # sequence positive semi-definite, which is what makes the untapered
     # transform non-negative in the first place.
-    full = np.correlate(x, x, mode="full") / n
-    acf = full[n - 1: n - 1 + m]
+    acf = _biased_acf(x, m)
 
     w = lag_window(lag_window_name, m, decay=decay)
     tapered = acf * w
@@ -970,8 +985,7 @@ def _yule_walker(x: np.ndarray, order: int,
     to `order`. The recursion computes them all on the way, so order selection
     costs one pass rather than one fit per candidate.
     """
-    n = x.size
-    r = np.correlate(x, x, mode="full")[n - 1: n + order] / n
+    r = _biased_acf(x, order + 1)
     if r[0] <= 0:
         raise ValueError("The signal has no power; an AR fit is undefined.")
     a = np.zeros(order + 1)
