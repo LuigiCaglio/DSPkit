@@ -30,6 +30,7 @@ Based on NumPy + SciPy + Matplotlib.
 | `multisensor` | Correlation matrix, coherence matrix, PSD matrix, multiple and partial coherence |
 | `fdd` | Frequency Domain Decomposition (FDD/EFDD) — natural frequencies, mode shapes, damping |
 | `statistics` | PDF estimation (KDE), histograms, joint distributions, covariance, Mahalanobis distance, normality assessment, mutual information |
+| `io` | Read MATLAB `.mat` files into channels, sample rate and channel names |
 | `plots` | Thin matplotlib wrappers for every analysis output |
 
 ---

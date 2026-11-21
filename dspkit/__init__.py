@@ -2,7 +2,7 @@
 DSPkit — a digital signal processing toolkit for time series data.
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 from dspkit.spectral import (
     fft_spectrum,
@@ -106,6 +106,10 @@ from dspkit.statistics import (
     normality,
     mutual_information,
     mi_significance,
+)
+from dspkit.io import (
+    load_mat,
+    MatRecord,
 )
 from dspkit.plots import (
     plot_signal,
@@ -214,6 +218,9 @@ __all__ = [
     "normality",
     "mutual_information",
     "mi_significance",
+    # io
+    "load_mat",
+    "MatRecord",
     # plots
     "plot_signal",
     "plot_fft",
