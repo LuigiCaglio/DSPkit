@@ -119,3 +119,58 @@ class TestEnergyVariation:
         assert len(times) == 10
         assert len(energies) == 10
         assert np.all(energies > 0)
+
+
+# --- windowed_stats ----------------------------------------------------------
+
+from dspkit.indicators import windowed_stats, spectral_entropy as _se
+from scipy import signal as _sig
+
+
+def test_windowed_stats_matches_direct_computation():
+    rng = np.random.default_rng(3)
+    fs = 200.0
+    x = rng.normal(size=20_123) + 0.5
+    w = windowed_stats(x, fs, window_duration=5.0)
+    L = 1000
+    assert w["window_samples"] == L and len(w["times"]) == 20_123 // L
+    for i in (0, 7, len(w["times"]) - 1):
+        c = x[i * L:(i + 1) * L]
+        assert np.isclose(w["rms"][i], np.sqrt(np.mean(c ** 2)))
+        assert np.isclose(w["mean"][i], c.mean())
+        assert np.isclose(w["crest_factor"][i], np.max(np.abs(c)) / np.sqrt(np.mean(c ** 2)))
+        assert np.isclose(w["kurtosis"][i], kurtosis(c, excess=True))
+        f, P = _sig.welch(c, fs=fs, nperseg=1000)
+        assert np.isclose(w["dominant_freq"][i], f[np.argmax(P)])
+        assert np.isclose(w["spectral_entropy"][i], _se(f, P))
+    assert np.isclose(w["times"][0], 2.5)
+
+
+def test_windowed_stats_reads_signals_right():
+    fs = 100.0
+    t = np.arange(0, 200, 1 / fs)
+    x = np.sin(2 * np.pi * 4 * t)
+    x[10_050:10_060] += 30                       # impact in window 10 (100-110 s)
+    w = windowed_stats(x, fs, window_duration=10.0)
+    assert int(np.argmax(w["kurtosis"])) == 10 and w["kurtosis"][10] > 10
+    quiet = np.delete(np.arange(20), 10)
+    assert np.allclose(w["kurtosis"][quiet], -1.5, atol=0.01)       # sine
+    assert np.allclose(w["crest_factor"][quiet], np.sqrt(2), atol=0.01)
+    assert np.allclose(w["dominant_freq"][quiet], 4.0, atol=w["df"])
+    assert w["spectral_entropy"][quiet].max() < 0.2                   # one line
+    noise = windowed_stats(np.random.default_rng(0).normal(size=40_000), fs, 20.0)
+    assert noise["spectral_entropy"].min() > 0.9
+    assert np.allclose(noise["kurtosis"], 0, atol=0.3)
+
+
+def test_windowed_stats_defaults_and_edges():
+    x = np.random.default_rng(1).normal(size=50_000)
+    w = windowed_stats(x, 100.0)
+    assert w["window_samples"] == 500 and len(w["times"]) == 100
+    assert windowed_stats(x[:3000], 100.0)["window_samples"] == 64     # floor
+    one = windowed_stats(x[:500], 100.0, window_duration=60.0)          # longer than record
+    assert len(one["times"]) == 1 and one["window_samples"] == 500
+    z = windowed_stats(np.zeros(1000), 100.0, 1.0)
+    assert np.all(np.isnan(z["crest_factor"])) and np.all(np.isnan(z["kurtosis"]))
+    with pytest.raises(ValueError):
+        windowed_stats(x, 100.0, window_duration=0)

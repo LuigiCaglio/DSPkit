@@ -69,7 +69,7 @@ nav:
       - Instantaneous: api/instantaneous.md
       - EMD / HHT: api/emd.md
       - Peaks: api/peaks.md
-      - SHM Indicators: api/indicators.md
+      - Indicators: api/indicators.md
       - FRF and Prediction: api/frf.md
       - Multi-Sensor: api/multisensor.md
       - Spectral Cube: api/cube.md

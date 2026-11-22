@@ -2,7 +2,7 @@
 DSPkit — a digital signal processing toolkit for time series data.
 """
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 
 from dspkit.spectral import (
     fft_spectrum,
@@ -82,6 +82,7 @@ from dspkit.indicators import (
     rms_variation,
     frequency_shift,
     energy_variation,
+    windowed_stats,
 )
 from dspkit.multisensor import (
     correlation_matrix,
@@ -201,6 +202,7 @@ __all__ = [
     "rms_variation",
     "frequency_shift",
     "energy_variation",
+    "windowed_stats",
     # multisensor
     "correlation_matrix",
     "coherence_matrix",
