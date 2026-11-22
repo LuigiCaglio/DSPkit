@@ -90,6 +90,10 @@ from dspkit.multisensor import (
     multiple_coherence,
     partial_coherence,
 )
+from dspkit.cube import (
+    SpectralCube,
+    spectral_cube,
+)
 from dspkit.fdd import (
     fdd_svd,
     fdd_peak_picking,
@@ -203,6 +207,9 @@ __all__ = [
     "psd_matrix",
     "multiple_coherence",
     "partial_coherence",
+    # cube
+    "SpectralCube",
+    "spectral_cube",
     # fdd
     "fdd_svd",
     "fdd_peak_picking",

@@ -72,6 +72,7 @@ nav:
       - SHM Indicators: api/indicators.md
       - FRF and Prediction: api/frf.md
       - Multi-Sensor: api/multisensor.md
+      - Spectral Cube: api/cube.md
       - FDD: api/fdd.md
       - Statistics: api/statistics.md
       - File I/O: api/io.md
