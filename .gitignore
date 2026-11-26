@@ -46,3 +46,7 @@ ideas_DSPkit_chat.md
 
 # GUI integration notes — belong with the app, not the library.
 GUI_NEW_FEATURES.md
+
+# Rust-port working notes (local only)
+RUST_PORT_AGENT_PROMPT.md
+RUST_PORT_PLAYBOOK.md
