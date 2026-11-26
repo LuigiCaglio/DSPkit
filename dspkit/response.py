@@ -95,8 +95,12 @@ def sdof_response(
     n = accel.size
     u = np.zeros(n)
     v = np.zeros(n)
-    # The load is -accel: base excitation enters as an inertial force.
-    p = -accel
+    # B above is the Nigam-Jennings operator for a *base acceleration*: the
+    # inertial load -accel is already folded into its signs, so the record goes
+    # in as it is. (Negating it here as well used to return u, v and a_abs with
+    # the wrong sign -- u settled at +a0/wn^2 under a constant a0 instead of
+    # -a0/wn^2. Peak spectra use |.|, so they were never affected.)
+    p = accel
     for i in range(1, n):
         u[i] = a11 * u[i - 1] + a12 * v[i - 1] + b11 * p[i - 1] + b12 * p[i]
         v[i] = a21 * u[i - 1] + a22 * v[i - 1] + b21 * p[i - 1] + b22 * p[i]

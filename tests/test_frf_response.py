@@ -30,6 +30,35 @@ def test_sdof_matches_steady_state_theory():
         assert np.max(np.abs(u[-int(5 * fs):])) == pytest.approx(theory, rel=1e-3)
 
 
+def test_sdof_sign_static_base_acceleration():
+    """A constant base acceleration a0 pushes the mass back: u -> -a0/wn^2.
+
+    The steady-state test above compares |u| and could not see a sign error;
+    this one can (it caught u settling at +a0/wn^2)."""
+    fs, T, zeta = 1000.0, 0.5, 0.2
+    u, v, a_abs = dsp.sdof_response(np.ones(20000), fs, T, zeta)
+    wn = 2 * np.pi / T
+    assert u[-1] == pytest.approx(-1.0 / wn ** 2, rel=1e-6)
+    assert abs(v[-1]) < 1e-9
+    # absolute acceleration of the mass tends to the base acceleration
+    assert a_abs[-1] == pytest.approx(1.0, rel=1e-6)
+
+
+def test_sdof_matches_direct_integration():
+    """Same record through an independent ODE solver, signs included."""
+    from scipy.integrate import solve_ivp
+    fs, T, zeta = 200.0, 0.4, 0.05
+    rng = np.random.default_rng(3)
+    ag = rng.normal(size=400)
+    t = np.arange(ag.size) / fs
+    wn = 2 * np.pi / T
+    sol = solve_ivp(lambda tt, y: [y[1], -np.interp(tt, t, ag) - 2 * zeta * wn * y[1] - wn ** 2 * y[0]],
+                    (0, t[-1]), [0.0, 0.0], t_eval=t, rtol=1e-10, atol=1e-12, max_step=1 / fs / 4)
+    u, v, _ = dsp.sdof_response(ag, fs, T, zeta)
+    assert np.max(np.abs(u - sol.y[0])) < 1e-6 * np.max(np.abs(sol.y[0]))
+    assert np.max(np.abs(v - sol.y[1])) < 1e-6 * np.max(np.abs(sol.y[1]))
+
+
 def test_pseudo_and_true_are_returned_separately():
     """They are defined differently and diverge with damping; both must be there."""
     fs, n = 200.0, 4000
